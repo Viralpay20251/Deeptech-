@@ -299,11 +299,19 @@ export function App() {
     const activeBrand = brands.find((b) => b.id === selectedBrandId);
     const brandSlug = activeBrand?.slug || 'chatr';
 
-    let signalData = {
+    let signalData: any = {
       topic: 'Engineering Productivity & Autonomous Agent Workflows 2026',
       source_url: 'https://chatr.chat',
       raw_text: 'Verified enterprise demand across video interaction tools, autonomous messaging workflows, and conversion metrics.',
       intent_type: 'commercial_investigation',
+      search_queries: [
+        {
+          query: 'autonomous engineering agent workflows',
+          impressions: 480,
+          clicks: 22,
+          position: 8.5,
+        },
+      ],
     };
 
     if (brandSlug === 'talentxcel') {
@@ -312,6 +320,14 @@ export function App() {
         source_url: 'https://talentxcel.in',
         raw_text: 'Verified career mobility patterns, tailored technical resume parsing, and verified hiring requirements across tech roles.',
         intent_type: 'informational',
+        search_queries: [
+          {
+            query: 'technical career mobility salary benchmarks',
+            impressions: 590,
+            clicks: 34,
+            position: 7.2,
+          },
+        ],
       };
     } else if (brandSlug === 'nuty-tales') {
       signalData = {
@@ -319,6 +335,14 @@ export function App() {
         source_url: 'https://nutytales.com',
         raw_text: 'Wholesome artisanal recipes, premium whole-food nutritional provenance, and verified culinary sourcing.',
         intent_type: 'informational',
+        search_queries: [
+          {
+            query: 'artisanal gourmet dry fruit nutrient sourcing',
+            impressions: 410,
+            clicks: 19,
+            position: 9.8,
+          },
+        ],
       };
     }
 

@@ -32,7 +32,7 @@ const envSchema = z.object({
   GOOGLE_AI_API_KEY: z.string().optional(),
   OLLAMA_BASE_URL: z.string().default('http://localhost:11434'),
   OLLAMA_MODEL: z.string().default('llama3.2:latest'),
-  OLLAMA_TIMEOUT_MS: z.coerce.number().default(120000),
+  OLLAMA_TIMEOUT_MS: z.coerce.number().default(3000),
 
   MODEL_BUDGET_PER_TASK_USD: z.coerce.number().default(0.50),
   MODEL_BUDGET_DAILY_USD: z.coerce.number().default(10.00),

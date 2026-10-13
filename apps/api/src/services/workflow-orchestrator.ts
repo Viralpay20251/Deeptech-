@@ -197,9 +197,9 @@ export class WorkflowOrchestrator {
         await query(
           `UPDATE workflow_runs
            SET status = 'failed',
-               error_message = $1,
+               error = $1,
                completed_at = NOW(),
-               metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{halt_reason}', '"missing_empirical_search_evidence"')
+               output = jsonb_build_object('halt_reason', 'missing_empirical_search_evidence')
            WHERE id = $2`,
           [haltMessage, runId]
         );
