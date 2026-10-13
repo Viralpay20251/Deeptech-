@@ -23,6 +23,10 @@ import { analyticsRouter } from './routes/analytics.js';
 import { redirectsRouter, trackedLinksApiRouter } from './routes/redirects.js';
 import { authGoogleRouter } from './routes/auth-google.js';
 import { publicPagesRouter, pagesApiRouter } from './routes/public-pages.js';
+import { crawlerRouter } from './routes/crawler.js';
+import { seoRouter } from './routes/seo.js';
+import { metaStudioRouter } from './routes/meta-studio.js';
+import { evidenceRouter } from './routes/evidence.js';
 
 const app = express();
 
@@ -66,6 +70,10 @@ app.use('/api/v1/analytics', analyticsRouter);
 app.use('/api/v1/tracked-links', trackedLinksApiRouter);
 app.use('/api/v1/auth/google', authGoogleRouter);
 app.use('/api/v1/pages', pagesApiRouter);
+app.use('/api/v1/crawler', crawlerRouter);
+app.use('/api/v1/seo', seoRouter);
+app.use('/api/v1/meta-studio', metaStudioRouter);
+app.use('/api/v1/evidence', evidenceRouter);
 
 // 5. Global Error Handler
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

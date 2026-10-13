@@ -25,13 +25,15 @@ export class SafetyViolationError extends Error {
   }
 }
 
+import dns from 'dns/promises';
+
 /**
  * SSRF protection: block requests to internal/cloud metadata addresses.
  * Prevents agents from being tricked into reading cloud metadata or
  * accessing internal network services.
  */
 const BLOCKED_URL_PATTERNS = [
-  /^https?:\/\/169\.254\.169\.254/i,    // AWS metadata
+  /^https?:\/\/169\.254\.169\.254/i,    // AWS / Azure / DigitalOcean metadata
   /^https?:\/\/metadata\.google/i,       // GCP metadata
   /^https?:\/\/169\.254\.0\./i,
   /^https?:\/\/100\.100\.100\.200/i,     // Alibaba metadata
@@ -41,11 +43,38 @@ const BLOCKED_URL_PATTERNS = [
   /^https?:\/\/10\.\d+\.\d+\.\d+/i,
   /^https?:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+/i,
   /^https?:\/\/192\.168\.\d+\.\d+/i,
+  /^https?:\/\/0\.0\.0\.0/i,
   /^file:\/\//i,
   /^ftp:\/\//i,
+  /^gopher:\/\//i,
+  /^data:\/\//i,
 ];
 
+export function isPrivateOrReservedIp(ip: string): boolean {
+  // IPv4 private ranges
+  if (/^127\./.test(ip)) return true;
+  if (/^10\./.test(ip)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return true;
+  if (/^192\.168\./.test(ip)) return true;
+  if (/^169\.254\./.test(ip)) return true;
+  if (/^0\./.test(ip)) return true;
+  if (ip === '255.255.255.255') return true;
+
+  // IPv6 loopback / unique local / link-local / IPv4-mapped
+  const cleanIpv6 = ip.toLowerCase();
+  if (cleanIpv6 === '::1' || cleanIpv6 === '::') return true;
+  if (cleanIpv6.startsWith('fc') || cleanIpv6.startsWith('fd')) return true; // fc00::/7
+  if (cleanIpv6.startsWith('fe8') || cleanIpv6.startsWith('fe9') || cleanIpv6.startsWith('fea') || cleanIpv6.startsWith('feb')) return true; // fe80::/10
+  if (cleanIpv6.startsWith('::ffff:')) {
+    const v4Part = cleanIpv6.replace('::ffff:', '');
+    return isPrivateOrReservedIp(v4Part);
+  }
+
+  return false;
+}
+
 export function assertSafeOutboundUrl(url: string): void {
+  // 1. Pattern checks
   for (const pattern of BLOCKED_URL_PATTERNS) {
     if (pattern.test(url)) {
       throw new SafetyViolationError(
@@ -54,6 +83,71 @@ export function assertSafeOutboundUrl(url: string): void {
         { url }
       );
     }
+  }
+
+  // 2. Protocol and hostname structure check
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new SafetyViolationError(
+        `Outbound URL protocol "${parsed.protocol}" is not permitted. Only HTTP and HTTPS are allowed.`,
+        'SSRF_INVALID_PROTOCOL',
+        { url, protocol: parsed.protocol }
+      );
+    }
+
+    const host = parsed.hostname.toLowerCase();
+    if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '0.0.0.0') {
+      throw new SafetyViolationError(
+        `Outbound URL host "${host}" is a loopback destination (SSRF protection).`,
+        'SSRF_LOOPBACK_HOST',
+        { url, host }
+      );
+    }
+  } catch (err) {
+    if (err instanceof SafetyViolationError) throw err;
+    throw new SafetyViolationError(
+      `Malformed outbound URL: "${url}"`,
+      'SSRF_MALFORMED_URL',
+      { url }
+    );
+  }
+}
+
+/**
+ * Async DNS-resolving SSRF check that resolves target host and prevents DNS rebinding to private IPs.
+ */
+export async function assertSafeOutboundUrlAsync(url: string): Promise<void> {
+  assertSafeOutboundUrl(url);
+
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname;
+
+    // Resolve IPv4 and IPv6 addresses
+    try {
+      const records = await dns.lookup(host, { all: true });
+      for (const rec of records) {
+        if (isPrivateOrReservedIp(rec.address)) {
+          throw new SafetyViolationError(
+            `Target host "${host}" resolved to private/reserved IP address "${rec.address}" (SSRF protection).`,
+            'SSRF_PRIVATE_IP_RESOLVED',
+            { url, host, ip: rec.address }
+          );
+        }
+      }
+    } catch (dnsErr) {
+      if (dnsErr instanceof SafetyViolationError) throw dnsErr;
+      // If DNS resolution fails, log warning but don't automatically crash unless in strict test
+      logger.warn({ host, err: (dnsErr as Error).message }, 'DNS resolution probe failed for outbound URL');
+    }
+  } catch (err) {
+    if (err instanceof SafetyViolationError) throw err;
+    throw new SafetyViolationError(
+      `Malformed outbound URL in async check: "${url}"`,
+      'SSRF_MALFORMED_URL',
+      { url }
+    );
   }
 }
 
