@@ -21,6 +21,7 @@ import { SafetyViolationError } from '../lib/safety.js';
 import { ModelGateway } from './model-gateway.js';
 import { OpportunityScoringEngine } from './scoring-engine.js';
 import { QualityGovernor } from './quality-governor.js';
+import { EvidenceService } from './evidence-service.js';
 import {
   AntiWordsFilter,
   SearchIntelligenceAgent,
@@ -402,6 +403,13 @@ export class WorkflowOrchestrator {
 
       const audit = QualityGovernor.audit(proposedAsset, brand.config as any);
 
+      // Audit claims for statistical or comparative statements
+      const claimAudit = await EvidenceService.auditClaims(
+        proposedAsset.body_markdown,
+        workspace_id,
+        verifiedCitations
+      ).catch(() => null);
+
       // ─── STEP 5: Create Content Asset in Database ──────────────────────────
       await query(
         `INSERT INTO content_assets
@@ -426,6 +434,31 @@ export class WorkflowOrchestrator {
           isSimulation,
         ]
       );
+
+      // Link any detected claims to source evidence
+      if (claimAudit && claimAudit.claimsDetected.length > 0) {
+        for (const claim of claimAudit.claimsDetected) {
+          const evRes = await query<{ id: string }>(
+            `SELECT id FROM source_evidence WHERE workspace_id = $1 AND url = ANY($2::text[]) LIMIT 1`,
+            [workspace_id, verifiedCitations]
+          ).catch(() => ({ rows: [] }));
+          if (evRes.rows[0]) {
+            await query(
+              `INSERT INTO evidence_claim_links (
+                evidence_id, resource_type, resource_id, claim_text, claim_type, passes_check, check_notes
+              ) VALUES ($1, 'content_asset', $2, $3, $4, $5, $6)`,
+              [
+                evRes.rows[0].id,
+                assetId,
+                claim.claimText,
+                claim.claimType,
+                claim.hasVerifiedEvidence,
+                claim.warning || 'Grounded in verified brand citation',
+              ]
+            ).catch(() => {});
+          }
+        }
+      }
 
       // ─── STEP 6: Human Approval Queue Gate ─────────────────────────────────
       // If quality checks pass, create an approval event and PAUSE workflow.

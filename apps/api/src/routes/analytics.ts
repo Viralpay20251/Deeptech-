@@ -175,3 +175,161 @@ analyticsRouter.get('/reconciliation', async (req: Request, res: Response) => {
     res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: (err as Error).message } });
   }
 });
+
+// ─── Audience Insights Endpoint ───────────────────────────────────────────────
+analyticsRouter.get('/audience-insights', async (req: Request, res: Response) => {
+  const workspaceId = (req.query['workspace_id'] as string) ?? '00000000-0000-0000-0000-000000000001';
+
+  try {
+    const brandsRes = await query<{
+      id: string;
+      slug: string;
+      display_name: string;
+      base_url: string;
+      config: Record<string, unknown>;
+    }>(
+      `SELECT id, slug, display_name, base_url, config FROM brands WHERE workspace_id = $1 ORDER BY slug ASC`,
+      [workspaceId]
+    );
+
+    const insights = brandsRes.rows.map((brand) => {
+      const activeEventDef = (brand.config['active_user_event_definition'] as string) || 'Active product usage';
+
+      const data: Record<string, unknown> = {
+        brand_id: brand.id,
+        brand_slug: brand.slug,
+        brand_name: brand.display_name,
+        canonical_url: brand.base_url,
+        active_event_definition: activeEventDef,
+        telemetry_status: 'isolated_read_only',
+        ga4_sessions_counted_as_mau: false,
+        non_conflation_policy:
+          'Strict: GA4 sessions and page views represent Google visit definitions and do not qualify as meaningful brand MAU.',
+      };
+
+      if (brand.slug === 'chatr') {
+        data['qualifying_actions'] = ['interactive_video_creation', 'automated_message_workflow_trigger', 'voice_interaction_completed'];
+        data['measured_engagement_tier'] = 'conversational_productivity';
+      } else if (brand.slug === 'talentxcel') {
+        data['qualifying_actions'] = ['cv_tailoring_export', 'verified_job_application', 'skills_benchmark_audit'];
+        data['measured_engagement_tier'] = 'career_advancement_action';
+      } else if (brand.slug === 'nuty-tales') {
+        data['qualifying_actions'] = ['recipe_gastronomy_exploration', 'artisanal_product_view', 'verified_paid_order'];
+        data['active_audience_vs_buyers_separation'] = {
+          engaged_audience: 'Tracked via catalogue & story engagement',
+          purchasing_customers: 'Tracked strictly via confirmed paid orders with separate reporting',
+        };
+      }
+
+      return data;
+    });
+
+    res.json({
+      success: true,
+      data: insights,
+      meta: {
+        enforcement: 'P6: MAU vs Commerce Non-Conflation Guarantee',
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: (err as Error).message } });
+  }
+});
+
+// ─── Experiments Endpoints ───────────────────────────────────────────────────
+analyticsRouter.get('/experiments', async (req: Request, res: Response) => {
+  const workspaceId = (req.query['workspace_id'] as string) ?? '00000000-0000-0000-0000-000000000001';
+  const brandId = req.query['brand_id'] as string | undefined;
+
+  try {
+    let sql = `SELECT e.id, e.workspace_id, e.brand_id, e.hypothesis, e.rationale,
+                      e.channel, e.primary_metric, e.guardrail_metrics, e.baseline_value,
+                      e.expected_lift_pct, e.status, e.start_date, e.end_date,
+                      e.stopping_rules, e.confounders_noted, e.result_summary,
+                      b.display_name AS brand_name
+               FROM experiments e
+               LEFT JOIN brands b ON e.brand_id = b.id
+               WHERE e.workspace_id = $1`;
+    const params: unknown[] = [workspaceId];
+
+    if (brandId) {
+      params.push(brandId);
+      sql += ` AND e.brand_id = $${params.length}`;
+    }
+
+    sql += ` ORDER BY e.created_at DESC LIMIT 50`;
+
+    const result = await query(sql, params);
+    res.json({ success: true, data: result.rows, meta: { total: result.rowCount } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: (err as Error).message } });
+  }
+});
+
+analyticsRouter.post('/experiments', async (req: Request, res: Response) => {
+  const {
+    workspace_id,
+    brand_id,
+    hypothesis,
+    rationale,
+    channel,
+    primary_metric,
+    guardrail_metrics,
+    baseline_value,
+    expected_lift_pct,
+    stopping_rules,
+  } = req.body as {
+    workspace_id?: string;
+    brand_id?: string;
+    hypothesis?: string;
+    rationale?: string;
+    channel?: string;
+    primary_metric?: string;
+    guardrail_metrics?: string[];
+    baseline_value?: number;
+    expected_lift_pct?: number;
+    stopping_rules?: string;
+  };
+
+  if (!brand_id || !hypothesis || !channel || !primary_metric) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: 'brand_id, hypothesis, channel, and primary_metric are required' },
+    });
+    return;
+  }
+
+  const workspaceId = workspace_id ?? '00000000-0000-0000-0000-000000000001';
+
+  try {
+    const insertRes = await query<{ id: string }>(
+      `INSERT INTO experiments (
+        workspace_id, brand_id, hypothesis, rationale, channel,
+        primary_metric, guardrail_metrics, baseline_value, expected_lift_pct,
+        stopping_rules, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'proposed')
+      RETURNING id`,
+      [
+        workspaceId,
+        brand_id,
+        hypothesis,
+        rationale || '',
+        channel,
+        primary_metric,
+        guardrail_metrics || ['brand_safety_compliance', 'unsubstantiated_claims_zero'],
+        baseline_value || null,
+        expected_lift_pct || 15.0,
+        stopping_rules || 'Halt if error rate exceeds 2% or brand safety violation detected.',
+      ]
+    );
+
+    res.json({
+      success: true,
+      message: 'Acquisition experiment proposed successfully.',
+      data: { id: insertRes.rows[0]?.id, status: 'proposed' },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: (err as Error).message } });
+  }
+});
+
