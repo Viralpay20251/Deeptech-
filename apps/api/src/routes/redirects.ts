@@ -119,3 +119,41 @@ trackedLinksApiRouter.get('/', async (req: Request, res: Response) => {
     });
   }
 });
+
+/**
+ * Direct Redirect Alias via API: GET /api/v1/tracked-links/r/:short_code
+ */
+trackedLinksApiRouter.get('/r/:short_code', async (req: Request, res: Response) => {
+  const rawCode = req.params['short_code'];
+  const shortCode = Array.isArray(rawCode) ? rawCode[0] : rawCode;
+  if (!shortCode) {
+    res.status(400).send('Bad Request: Short code is required');
+    return;
+  }
+
+  const userAgent = req.headers['user-agent'];
+  const referer = req.headers['referer'] as string | undefined;
+  const ipAddress =
+    (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+    req.socket.remoteAddress ||
+    '127.0.0.1';
+
+  try {
+    const result = await RedirectRouterService.processRedirect({
+      shortCode,
+      userAgent,
+      ipAddress,
+      referer,
+      incomingQueryParams: req.query as Record<string, string | string[] | undefined>,
+    });
+
+    if (!result.found || !result.destinationUrl) {
+      res.status(404).send(`Tracked link not found or inactive for short code: ${shortCode}`);
+      return;
+    }
+
+    res.redirect(302, result.destinationUrl);
+  } catch (err) {
+    res.status(500).send(`Redirect error: ${(err as Error).message}`);
+  }
+});

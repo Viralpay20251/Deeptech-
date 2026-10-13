@@ -58,6 +58,66 @@ publicPagesRouter.get('/robots.txt', (_req: Request, res: Response) => {
 export const pagesApiRouter = Router();
 
 /**
+ * Public Surface Sitemap Alias via API: GET /api/v1/pages/sitemap.xml
+ */
+pagesApiRouter.get('/sitemap.xml', async (_req: Request, res: Response) => {
+  try {
+    const sitemap = await PublishingService.generateSitemapXml();
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.send(sitemap);
+  } catch (err) {
+    res.status(500).send(`Sitemap generation error: ${(err as Error).message}`);
+  }
+});
+
+/**
+ * Public Surface Robots Alias via API: GET /api/v1/pages/robots.txt
+ */
+pagesApiRouter.get('/robots.txt', (_req: Request, res: Response) => {
+  const robots = PublishingService.generateRobotsTxt();
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.send(robots);
+});
+
+/**
+ * Public HTML Page Alias via API: GET /api/v1/pages/p/:slug
+ */
+pagesApiRouter.get('/p/:slug', async (req: Request, res: Response) => {
+  const rawSlug = req.params['slug'];
+  const slug = Array.isArray(rawSlug) ? rawSlug[0] : rawSlug;
+  if (!slug) {
+    res.status(404).send('Page not found');
+    return;
+  }
+  try {
+    const page = await PublishingService.getPageBySlug(slug);
+    if (!page) {
+      res.status(404).send('Not Found: The requested research article does not exist or has not been approved.');
+      return;
+    }
+    const html = PublishingService.renderHtmlDocument(page);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch (err) {
+    res.status(500).send(`Server error: ${(err as Error).message}`);
+  }
+});
+
+/**
+ * List all published pages: GET /api/v1/pages
+ */
+pagesApiRouter.get('/', async (req: Request, res: Response) => {
+  const { workspace_id, brand_id } = req.query;
+  const workspaceId = (workspace_id as string) ?? '00000000-0000-0000-0000-000000000001';
+  try {
+    const pages = await PublishingService.listPages(workspaceId, brand_id as string | undefined);
+    res.json({ success: true, data: pages, meta: { total: pages.length } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { message: (err as Error).message } });
+  }
+});
+
+/**
  * Admin API: Publish a new page (requires approved approval_event_id)
  * POST /api/v1/pages/publish
  */

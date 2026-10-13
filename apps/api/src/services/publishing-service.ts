@@ -197,6 +197,24 @@ Sitemap: ${publishingOrigin}/sitemap.xml
   }
 
   /**
+   * Lists all published pages for a workspace and optional brand filter
+   */
+  public static async listPages(workspaceId: string, brandId?: string): Promise<PublishedPageRecord[]> {
+    if (brandId) {
+      const res = await query<PublishedPageRecord>(
+        `SELECT * FROM public_published_pages WHERE workspace_id = $1 AND brand_id = $2 ORDER BY published_at DESC`,
+        [workspaceId, brandId]
+      );
+      return res.rows;
+    }
+    const res = await query<PublishedPageRecord>(
+      `SELECT * FROM public_published_pages WHERE workspace_id = $1 ORDER BY published_at DESC`,
+      [workspaceId]
+    );
+    return res.rows;
+  }
+
+  /**
    * Renders full SEO-compliant HTML page
    */
   public static renderHtmlDocument(page: PublishedPageRecord): string {
