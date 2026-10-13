@@ -50,13 +50,13 @@ const envSchema = z.object({
 
 function loadEnv() {
   const isTest = process.env['NODE_ENV'] === 'test' || process.env['VITEST'] === 'true';
+  const isVercelBuild = process.env['VERCEL'] === '1' && !process.env['DATABASE_URL'];
   const rawEnv = {
     ...process.env,
-    ...(isTest
+    ...(isTest || isVercelBuild
       ? {
           DATABASE_URL: process.env['DATABASE_URL'] ?? 'postgresql://growth_os_test_user:test_secret@localhost:5432/growth_os_test_db',
-          JWT_SECRET: process.env['JWT_SECRET'] ?? 'test_jwt_secret_must_be_at_least_32_characters_long_for_safety',
-          NODE_ENV: 'test',
+          JWT_SECRET: process.env['JWT_SECRET'] ?? 'default_jwt_secret_must_be_at_least_32_characters_long_for_safety',
         }
       : {}),
   };

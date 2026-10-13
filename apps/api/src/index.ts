@@ -100,6 +100,7 @@ function startServer() {
 
 // Export for test suites or start directly
 export { app, startServer };
+export default app;
 
 if (process.argv[1]?.endsWith('index.ts') || process.argv[1]?.endsWith('index.js')) {
   startServer();
