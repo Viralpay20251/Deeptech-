@@ -282,6 +282,19 @@ export async function runSeed(): Promise<void> {
       );
     }
 
+    // Workflow Definitions Catalogue
+    await client.query(
+      `INSERT INTO workflow_definitions (id, display_name, description, version, definition_json)
+       VALUES (
+         'demand_discovery_vertical_slice',
+         'Demand Discovery Vertical Slice',
+         'End-to-end flow: Ingest Signal -> Cluster -> Score -> Synthesise -> QA Audit -> Approval Queue',
+         '1.0.0',
+         '{"steps": ["ingest_signal", "score_opportunity", "build_content", "audit_quality", "queue_approval"]}'::jsonb
+       )
+       ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name`
+    );
+
     // 5. Connector Definitions Catalogue
     const connectorDefs = [
       {

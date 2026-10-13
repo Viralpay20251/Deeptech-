@@ -5,7 +5,10 @@
  * NEVER hard-code secrets here or in any source file.
  */
 
+import dotenv from 'dotenv';
 import { z } from 'zod';
+
+dotenv.config();
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'staging', 'production', 'test']).default('development'),

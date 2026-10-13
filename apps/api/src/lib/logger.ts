@@ -40,10 +40,6 @@ const pinoOptions: pino.LoggerOptions = {
   },
 };
 
-if (env.NODE_ENV === 'development') {
-  pinoOptions.transport = { target: 'pino-pretty', options: { colorize: true } };
-}
-
 export const logger = pino(pinoOptions);
 
 export type Logger = typeof logger;

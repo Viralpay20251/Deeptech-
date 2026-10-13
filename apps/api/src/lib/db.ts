@@ -39,7 +39,7 @@ export const pool = new Pool({
   connectionString: env.DATABASE_URL,
   min: env.DATABASE_POOL_MIN,
   max: env.DATABASE_POOL_MAX,
-  ssl: env.DATABASE_SSL ? { rejectUnauthorized: true } : false,
+  ssl: env.DATABASE_SSL ? { rejectUnauthorized: false } : false,
   application_name: 'autonomous-growth-os',
 });
 
