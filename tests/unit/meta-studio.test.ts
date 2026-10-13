@@ -1,64 +1,132 @@
 /**
- * Meta Tags Maker & Preview Studio Unit Test
+ * Meta Tags Studio V3 Comprehensive Unit Tests
  *
- * Verifies P3 Requirements:
- * 1. Generates title within optimal limits (append brand name, bounded length)
- * 2. Generates complete Open Graph and Twitter Card tags
- * 3. Builds valid Schema.org JSON-LD templates
- * 4. Generates search and social preview simulations
- * 5. Generates valid copyable HTML snippets
+ * Verifies:
+ * 1. URL validation rejects malformed URLs, embedded credentials, and unsafe protocols.
+ * 2. Zero-invention policy: datePublished/dateModified are never invented.
+ * 3. Zero-invention policy: product prices, currency, and availability are never invented.
+ * 4. Multi-variant candidate title and description generation with pixel width estimates.
+ * 5. Safe HTML entity escaping and script breakout prevention in JSON-LD.
+ * 6. Metadata health report diagnostics and explainable scoring.
+ * 7. Simulated previews explicitly indicate simulation and do not claim external verification.
  */
 
 import { describe, it, expect } from 'vitest';
-import { MetaStudioService, type MetaGenerationInput } from '../../apps/api/src/services/meta-studio-service.js';
+import { MetaStudioService, type MetaStudioGenerateInput } from '../../apps/api/src/services/meta-studio-service.js';
 
-describe('P3: Meta Tags Maker & Preview Studio', () => {
-  const input: MetaGenerationInput = {
+describe('Meta Tags Studio V3: Accuracy, Truthfulness, & Governance', () => {
+  const baseInput: MetaStudioGenerateInput = {
+    workspaceId: '00000000-0000-0000-0000-000000000001',
     brandName: 'CHATR',
     brandDomain: 'https://chatr.chat',
     pageUrl: 'https://chatr.chat/video-tools',
     pageTitle: 'Autonomous Video Messaging & Engagement Tools 2026',
-    pageDescription: 'Enterprise-grade interactive video messaging with automated conversational engagement and real-time response workflows.',
+    pageDescription: 'Enterprise-grade interactive video messaging with automated conversational engagement.',
     targetKeyword: 'video messaging tools',
     schemaType: 'Article',
   };
 
-  it('generates optimized meta tags including brand name and canonical', () => {
-    const result = MetaStudioService.generate(input);
-    expect(result.metaTags.title).toContain('CHATR');
-    expect(result.metaTags.canonical).toBe('https://chatr.chat/video-tools');
-    expect(result.metaTags.robots).toContain('index, follow');
+  it('rejects URLs with embedded credentials and invalid protocols', () => {
+    const credUrl = MetaStudioService.validateAndNormalizeUrl('https://admin:secret@chatr.chat/path');
+    expect(credUrl.isValid).toBe(false);
+    expect(credUrl.error).toContain('embedded credentials');
+
+    const fileUrl = MetaStudioService.validateAndNormalizeUrl('file:///etc/passwd');
+    expect(fileUrl.isValid).toBe(false);
+    expect(fileUrl.error).toContain('Only HTTP and HTTPS are allowed');
+
+    const malformed = MetaStudioService.validateAndNormalizeUrl('not-a-valid-url');
+    expect(malformed.isValid).toBe(false);
   });
 
-  it('generates Open Graph and Twitter card specifications', () => {
-    const result = MetaStudioService.generate(input);
-    expect(result.openGraph['og:site_name']).toBe('CHATR');
-    expect(result.openGraph['og:type']).toBe('article');
-    expect(result.twitterCard['twitter:card']).toBe('summary_large_image');
-    expect(result.twitterCard['twitter:title']).toContain('CHATR');
+  it('enforces brand domain allowlist', () => {
+    const resValid = MetaStudioService.validateAndNormalizeUrl('https://chatr.chat/features', ['chatr.chat']);
+    expect(resValid.isValid).toBe(true);
+
+    const resForeign = MetaStudioService.validateAndNormalizeUrl('https://malicious-site.com/phish', ['chatr.chat']);
+    expect(resForeign.isValid).toBe(false);
+    expect(resForeign.error).toContain('outside the authorized brand domains');
   });
 
-  it('builds valid Schema.org Article JSON-LD with correct context', () => {
-    const result = MetaStudioService.generate(input);
+  it('never invents datePublished or dateModified timestamps when not provided', () => {
+    const result = MetaStudioService.generate(baseInput);
     const jsonLd = result.jsonLd as any;
-    expect(jsonLd['@context']).toBe('https://schema.org');
-    expect(jsonLd['@type']).toBe('Article');
-    expect(jsonLd.author['@type']).toBe('Organization');
-    expect(jsonLd.author.name).toBe('CHATR');
+
+    expect(jsonLd.datePublished).toBeUndefined();
+    expect(jsonLd.dateModified).toBeUndefined();
+    expect(result.omittedFields.some((f) => f.includes('datePublished'))).toBe(true);
   });
 
-  it('provides simulation previews for Google SERP and Social cards', () => {
-    const result = MetaStudioService.generate(input);
-    expect(result.previews.googleSerp.displayUrl).toBe('https://chatr.chat/video-tools');
-    expect(result.previews.googleSerp.title).toContain('CHATR');
-    expect(result.previews.twitter.domain).toBe('chatr.chat');
+  it('includes datePublished only when explicitly extracted or provided', () => {
+    const result = MetaStudioService.generate({
+      ...baseInput,
+      datePublished: '2026-03-15T10:00:00Z',
+    });
+    const jsonLd = result.jsonLd as any;
+    expect(jsonLd.datePublished).toBe('2026-03-15T10:00:00Z');
   });
 
-  it('outputs complete copyable HTML snippet', () => {
-    const result = MetaStudioService.generate(input);
-    expect(result.htmlSnippet).toContain('<title>');
-    expect(result.htmlSnippet).toContain('<meta name="description"');
-    expect(result.htmlSnippet).toContain('<meta property="og:title"');
-    expect(result.htmlSnippet).toContain('<script type="application/ld+json">');
+  it('never invents product prices, offers, or availability for Product schema', () => {
+    const result = MetaStudioService.generate({
+      ...baseInput,
+      schemaType: 'Product',
+    });
+    const jsonLd = result.jsonLd as any;
+    expect(jsonLd['@type']).toBe('Product');
+    expect(jsonLd.offers).toBeUndefined();
+    expect(result.omittedFields.some((f) => f.includes('offers/price'))).toBe(true);
+  });
+
+  it('generates 3 candidate title variants with pixel width estimations', () => {
+    const result = MetaStudioService.generate(baseInput);
+    expect(result.titleCandidates.length).toBe(3);
+
+    const variants = result.titleCandidates.map((c) => c.variant);
+    expect(variants).toContain('descriptive');
+    expect(variants).toContain('benefit_led');
+    expect(variants).toContain('brand_concise');
+
+    for (const c of result.titleCandidates) {
+      expect(c.charCount).toBeGreaterThan(0);
+      expect(c.estimatedPixelWidth).toBeGreaterThan(0);
+      expect(typeof c.fitsDesktopSnippet).toBe('boolean');
+    }
+  });
+
+  it('escapes HTML attributes and prevents </script> breakout injection', () => {
+    const injectionInput: MetaStudioGenerateInput = {
+      ...baseInput,
+      pageTitle: '"><script>alert(1)</script>',
+      pageDescription: 'Description with "quotes" & ampersands and </script> tags',
+    };
+    const result = MetaStudioService.generate(injectionInput);
+
+    expect(result.htmlSnippet).not.toContain('<script>alert(1)</script>');
+    expect(result.htmlSnippet).toContain('&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(result.htmlSnippet).not.toContain('</script> tags'); // Escaped as <\/script>
+  });
+
+  it('evaluates metadata health report with categorized diagnostic findings', () => {
+    const report = MetaStudioService.validateMetadata({
+      title: 'Tools', // too short, pixel underflow
+      metaDesc: null, // missing description
+      canonical: 'https://chatr.chat/video-tools',
+      pageUrl: 'https://chatr.chat/video-tools',
+      h1: 'Autonomous Video Messaging Tools',
+      imageUrl: null, // missing share image
+    });
+
+    expect(report.overallScore).toBeLessThan(100);
+    expect(report.findings.some((f) => f.ruleId === 'COMP_DESC_MISSING')).toBe(true);
+    expect(report.findings.some((f) => f.ruleId === 'SOCIAL_IMAGE_MISSING')).toBe(true);
+  });
+
+  it('simulated previews are explicitly labeled with truthful notice', () => {
+    const result = MetaStudioService.generate(baseInput);
+    expect(result.notice).toContain('Draft generated from operator inputs');
+    expect(result.evidenceState).toBe('input_only');
+    expect(result.simulatedPreviews.googleSerp).toBeDefined();
+    expect(result.simulatedPreviews.twitterLarge.cardType).toBe('summary_large_image');
+    expect(result.twitterCard['twitter:card']).toBe('summary');
   });
 });

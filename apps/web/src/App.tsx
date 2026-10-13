@@ -119,16 +119,38 @@ export function App() {
   });
   const [auditingSeo, setAuditingSeo] = useState<boolean>(false);
 
-  // Meta Studio State
+  // Meta Studio State (V3 Workbench)
   const [metaForm, setMetaForm] = useState({
     pageUrl: 'https://chatr.chat/video-messaging',
     pageTitle: 'Autonomous Video Messaging & Engagement Tools 2026',
     pageDescription: 'Enterprise-grade interactive video messaging with automated conversational engagement and real-time response workflows.',
     targetKeyword: 'autonomous video messaging',
+    canonicalUrl: 'https://chatr.chat/video-messaging',
+    imageUrl: '',
+    imageAlt: 'CHATR video messaging platform interface',
+    authorName: '',
+    datePublished: '',
+    dateModified: '',
     schemaType: 'WebSite' as any,
   });
   const [generatedMeta, setGeneratedMeta] = useState<any | null>(null);
   const [generatingMeta, setGeneratingMeta] = useState<boolean>(false);
+  const [inspectedData, setInspectedData] = useState<any | null>(null);
+  const [inspectingUrl, setInspectingUrl] = useState<boolean>(false);
+  const [imageProbeResult, setImageProbeResult] = useState<any | null>(null);
+  const [probingImage, setProbingImage] = useState<boolean>(false);
+  const [metaValidationReport, setMetaValidationReport] = useState<any | null>(null);
+  const [validatingReport, setValidatingReport] = useState<boolean>(false);
+  const [previewPlatform, setPreviewPlatform] = useState<
+    'google_desktop' | 'google_mobile' | 'facebook' | 'linkedin' | 'twitter_large' | 'twitter_small'
+  >('google_desktop');
+  const [activeCodeTab, setActiveCodeTab] = useState<'head' | 'meta' | 'og' | 'twitter' | 'schema'>('head');
+  const [metaProposals, setMetaProposals] = useState<any[]>([]);
+  const [proposalNotes, setProposalNotes] = useState<string>('');
+  const [submittingProposal, setSubmittingProposal] = useState<boolean>(false);
+  const [selectedBatchCrawlId, setSelectedBatchCrawlId] = useState<string>('');
+  const [batchAuditReport, setBatchAuditReport] = useState<any | null>(null);
+  const [auditingBatch, setAuditingBatch] = useState<boolean>(false);
 
   // Evidence State
   const [claimText, setClaimText] = useState<string>('CHATR delivers 48% higher engagement and is the industry-leading messaging solution.');
@@ -144,6 +166,7 @@ export function App() {
     fetchCrawlJobs();
     fetchSeoFindings();
     fetchEvidence();
+    fetchProposals();
 
     if (window.location.search.includes('oauth=google_success')) {
       setNotification('✅ Google OAuth connection successfully verified and active!');
@@ -335,6 +358,77 @@ export function App() {
     }
   };
 
+  const estimatePixelWidth = (text: string, type: 'title' | 'description' = 'title'): number => {
+    if (!text) return 0;
+    const factor = type === 'title' ? 10.4 : 6.8;
+    return Math.round(text.length * factor);
+  };
+
+  const handleInspectUrl = async () => {
+    if (!metaForm.pageUrl) {
+      setNotification('❌ Please enter a page URL to inspect.');
+      return;
+    }
+    const activeBrand = brands.find((b) => b.id === selectedBrandId) || brands[0];
+    setInspectingUrl(true);
+    setNotification('Inspecting page with SSRF-safe HTML parser...');
+    try {
+      const res = await fetch('/api/v1/meta-studio/inspect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: metaForm.pageUrl,
+          brand_id: activeBrand?.id,
+          allowed_domains: activeBrand ? [activeBrand.base_url, ...(activeBrand.config?.secondary_domains || [])] : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setInspectedData(data.data);
+        handleRunDiagnostics(data.data);
+        setNotification(`✅ Page inspected: HTTP ${data.data.statusCode} in ${data.data.fetchDurationMs}ms (${(data.data.htmlBytes / 1024).toFixed(1)} KB)`);
+      } else {
+        setNotification(`❌ Inspection failed: ${data.error?.message || data.error}`);
+      }
+    } catch (err) {
+      setNotification(`❌ Inspection error: ${(err as Error).message}`);
+    } finally {
+      setInspectingUrl(false);
+    }
+  };
+
+  const handleVerifyImage = async (overrideUrl?: string) => {
+    const targetUrl = overrideUrl || metaForm.imageUrl;
+    if (!targetUrl) {
+      setNotification('❌ Please provide an image URL to verify.');
+      return;
+    }
+    setProbingImage(true);
+    setNotification('Probing social image (SSRF check, status, content-type, size)...');
+    try {
+      const res = await fetch('/api/v1/meta-studio/image-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_url: targetUrl }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setImageProbeResult(data.data);
+        if (data.data.isValid) {
+          setNotification(`✅ Image verified: HTTP ${data.data.httpStatus}, ${data.data.contentType}, ${data.data.contentLength ? (data.data.contentLength / 1024).toFixed(0) + ' KB' : 'valid'}`);
+        } else {
+          setNotification(`⚠️ Image probe issue: ${data.data.errorMessage}`);
+        }
+      } else {
+        setNotification(`❌ Image probe failed: ${data.error?.message || data.error}`);
+      }
+    } catch (err) {
+      setNotification(`❌ Image probe error: ${(err as Error).message}`);
+    } finally {
+      setProbingImage(false);
+    }
+  };
+
   const handleGenerateMeta = async () => {
     const activeBrand = brands.find((b) => b.id === selectedBrandId) || brands[0];
     setGeneratingMeta(true);
@@ -351,12 +445,19 @@ export function App() {
           page_description: metaForm.pageDescription,
           target_keyword: metaForm.targetKeyword,
           schema_type: metaForm.schemaType,
+          image_url: metaForm.imageUrl || undefined,
+          image_alt: metaForm.imageAlt || undefined,
+          author_name: metaForm.authorName || undefined,
+          date_published: metaForm.datePublished || undefined,
+          date_modified: metaForm.dateModified || undefined,
+          observed_data: inspectedData || undefined,
         }),
       });
       const data = await res.json();
       if (data.success) {
         setGeneratedMeta(data.data);
-        setNotification('✅ Metadata synthesized with verified live previews!');
+        handleRunDiagnostics();
+        setNotification('✅ Generated 3 title & description variants with pixel-width meters. Simulated previews updated.');
       } else {
         setNotification(`❌ Generation failed: ${data.error?.message}`);
       }
@@ -364,6 +465,137 @@ export function App() {
       setNotification(`❌ Generation error: ${(err as Error).message}`);
     } finally {
       setGeneratingMeta(false);
+    }
+  };
+
+  const handleRunDiagnostics = async (observedOverride?: any) => {
+    setValidatingReport(true);
+    try {
+      const obs = observedOverride || inspectedData;
+      const res = await fetch('/api/v1/meta-studio/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          page_url: metaForm.pageUrl,
+          title: metaForm.pageTitle || obs?.title,
+          meta_description: metaForm.pageDescription || obs?.metaDescription,
+          canonical_url: metaForm.canonicalUrl || obs?.canonicalUrl || metaForm.pageUrl,
+          h1: obs?.h1,
+          image_url: metaForm.imageUrl || obs?.openGraph?.image,
+          schema_types: obs?.schemaTypes || (metaForm.schemaType ? [metaForm.schemaType] : []),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMetaValidationReport(data.data);
+      }
+    } catch {}
+    finally {
+      setValidatingReport(false);
+    }
+  };
+
+  const fetchProposals = async () => {
+    try {
+      const res = await fetch('/api/v1/meta-studio/proposals');
+      const data = await res.json();
+      if (data.success) {
+        setMetaProposals(data.data);
+      }
+    } catch {}
+  };
+
+  const handleSubmitProposal = async () => {
+    if (!metaForm.pageUrl || !metaForm.pageTitle) {
+      setNotification('❌ Target URL and Title are required to submit a proposal.');
+      return;
+    }
+    const activeBrand = brands.find((b) => b.id === selectedBrandId) || brands[0];
+    setSubmittingProposal(true);
+    setNotification('Submitting metadata proposal to human governance queue...');
+    try {
+      const res = await fetch('/api/v1/meta-studio/proposals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspace_id: '00000000-0000-0000-0000-000000000001',
+          brand_id: activeBrand?.id,
+          url: metaForm.pageUrl,
+          proposal_type: 'meta_tags',
+          payload: {
+            title: metaForm.pageTitle,
+            description: metaForm.pageDescription,
+            canonical: metaForm.canonicalUrl || metaForm.pageUrl,
+            imageUrl: metaForm.imageUrl,
+            schemaType: metaForm.schemaType,
+          },
+          observed_payload: inspectedData ? {
+            title: inspectedData.title,
+            description: inspectedData.metaDescription,
+            canonical: inspectedData.canonicalUrl,
+            imageUrl: inspectedData.openGraph?.image,
+          } : undefined,
+          notes: proposalNotes || 'Operator generated metadata proposal via Studio V3.',
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNotification('✅ Proposal submitted for human review & governance!');
+        setProposalNotes('');
+        fetchProposals();
+      } else {
+        setNotification(`❌ Proposal submission failed: ${data.error?.message}`);
+      }
+    } catch (err) {
+      setNotification(`❌ Submission error: ${(err as Error).message}`);
+    } finally {
+      setSubmittingProposal(false);
+    }
+  };
+
+  const handleDecideProposal = async (id: string, decision: 'approved' | 'rejected') => {
+    try {
+      const res = await fetch(`/api/v1/meta-studio/proposals/${id}/decide`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          decision,
+          notes: `Reviewed and ${decision} in Control Room workbench.`,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNotification(`✅ Proposal marked as ${decision}.`);
+        fetchProposals();
+      } else {
+        setNotification(`❌ Decision failed: ${data.error?.message}`);
+      }
+    } catch (err) {
+      setNotification(`❌ Decision error: ${(err as Error).message}`);
+    }
+  };
+
+  const handleAuditBatch = async () => {
+    const jobId = selectedBatchCrawlId || crawlJobs[0]?.id;
+    if (!jobId) {
+      setNotification('❌ Please select or enter a crawl job ID.');
+      return;
+    }
+    setAuditingBatch(true);
+    setNotification(`Auditing crawl job ${jobId} for metadata issues...`);
+    try {
+      const res = await fetch(`/api/v1/meta-studio/batch/${jobId}`);
+      const data = await res.json();
+      if (data.success) {
+        setBatchAuditReport(data.data);
+        setNotification(`✅ Batch audit complete: ${data.data.totalPagesAudited} pages analyzed.`);
+      } else {
+        setNotification(`❌ Batch audit failed: ${data.error?.message}`);
+      }
+    } catch (err) {
+      setNotification(`❌ Audit error: ${(err as Error).message}`);
+    } finally {
+      setAuditingBatch(false);
     }
   };
 
@@ -986,137 +1218,734 @@ export function App() {
           </div>
         )}
 
-        {/* TAB 6: Meta Tags Maker & Preview Studio */}
+        {/* TAB 6: Meta Tags Studio V3 — Inspection, Generation, Validation, Previews & Governance */}
         {activeTab === 'meta_studio' && (
-          <div>
-            <div style={{ marginBottom: '16px' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: 700 }}>Meta Tags Maker & Preview Studio</h2>
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                Synthesize standard meta tags, Schema.org JSON-LD templates, and inspect pixel-accurate Google SERP & Social card previews.
-              </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {/* Header & Truthfulness Architecture Legend */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+              <div>
+                <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Meta Tags Studio V3</h2>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                  Live page inspection, pixel-accurate multi-candidate generation, real image probing, simulated previews, and review-gated governance.
+                </p>
+              </div>
+
+              {/* 4-State Architecture Badges */}
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '4px', backgroundColor: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.4)', color: '#93c5fd', fontWeight: 600 }}>
+                  🔵 OBSERVED STATE: Real HTML Facts
+                </span>
+                <span style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '4px', backgroundColor: 'rgba(168, 85, 247, 0.15)', border: '1px solid rgba(168, 85, 247, 0.4)', color: '#d8b4fe', fontWeight: 600 }}>
+                  🟣 SUGGESTED: Draft Optimization
+                </span>
+                <span style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '4px', backgroundColor: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.4)', color: '#fde68a', fontWeight: 600 }}>
+                  🟠 SIMULATED: Local Preview
+                </span>
+                <span style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '4px', backgroundColor: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.4)', color: '#6ee7b7', fontWeight: 600 }}>
+                  🟢 VERIFIED: Live Probe Evidence
+                </span>
+              </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-              {/* Form Side */}
-              <div style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '20px' }}>
-                <h3 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '16px' }}>Input Parameters</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>Page URL:</label>
-                    <input
-                      type="text"
-                      value={metaForm.pageUrl}
-                      onChange={(e) => setMetaForm({ ...metaForm, pageUrl: e.target.value })}
-                      style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', boxSizing: 'border-box' }}
-                    />
+            {/* SECTION 1: Safe Target URL Inspector & Ingest */}
+            <div style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px' }}>
+              <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '8px' }}>1. Target URL & Live Inspection (SSRF-Protected)</div>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <input
+                  type="text"
+                  value={metaForm.pageUrl}
+                  onChange={(e) => setMetaForm({ ...metaForm, pageUrl: e.target.value })}
+                  placeholder="https://chatr.chat/video-tools"
+                  style={{ flex: 1, minWidth: '280px', padding: '8px 12px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', boxSizing: 'border-box' }}
+                />
+                <button
+                  onClick={handleInspectUrl}
+                  disabled={inspectingUrl}
+                  style={{ padding: '8px 16px', backgroundColor: 'var(--accent-blue)', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 600, cursor: inspectingUrl ? 'not-allowed' : 'pointer' }}
+                >
+                  {inspectingUrl ? 'Inspecting Live Page...' : '🔍 Inspect Live Page'}
+                </button>
+              </div>
+
+              {/* Observed Page Facts Card */}
+              {inspectedData && (
+                <div style={{ marginTop: '16px', padding: '14px', backgroundColor: 'var(--bg-secondary)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '6px', fontSize: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 700, color: '#93c5fd' }}>🔵 Observed Page Facts:</span>
+                      <span style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(16, 185, 129, 0.2)', color: '#34d399', fontWeight: 700 }}>
+                        HTTP {inspectedData.statusCode}
+                      </span>
+                      <span style={{ color: 'var(--text-secondary)' }}>
+                        {(inspectedData.htmlBytes / 1024).toFixed(1)} KB in {inspectedData.fetchDurationMs}ms
+                      </span>
+                    </div>
+                    {/* Quick Apply Buttons */}
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      {inspectedData.title && (
+                        <button
+                          onClick={() => setMetaForm({ ...metaForm, pageTitle: inspectedData.title })}
+                          style={{ padding: '3px 8px', fontSize: '11px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', cursor: 'pointer' }}
+                        >
+                          Use Fetched Title
+                        </button>
+                      )}
+                      {inspectedData.metaDescription && (
+                        <button
+                          onClick={() => setMetaForm({ ...metaForm, pageDescription: inspectedData.metaDescription })}
+                          style={{ padding: '3px 8px', fontSize: '11px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', cursor: 'pointer' }}
+                        >
+                          Use Fetched Description
+                        </button>
+                      )}
+                      {inspectedData.canonicalUrl && (
+                        <button
+                          onClick={() => setMetaForm({ ...metaForm, canonicalUrl: inspectedData.canonicalUrl })}
+                          style={{ padding: '3px 8px', fontSize: '11px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', cursor: 'pointer' }}
+                        >
+                          Use Fetched Canonical
+                        </button>
+                      )}
+                      {inspectedData.openGraph?.image && (
+                        <button
+                          onClick={() => {
+                            setMetaForm({ ...metaForm, imageUrl: inspectedData.openGraph.image });
+                            handleVerifyImage(inspectedData.openGraph.image);
+                          }}
+                          style={{ padding: '3px 8px', fontSize: '11px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', cursor: 'pointer' }}
+                        >
+                          Use Detected Image
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>Page Title:</label>
-                    <input
-                      type="text"
-                      value={metaForm.pageTitle}
-                      onChange={(e) => setMetaForm({ ...metaForm, pageTitle: e.target.value })}
-                      style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', boxSizing: 'border-box' }}
-                    />
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px' }}>
+                    <div><strong>Title:</strong> {inspectedData.title || '<Missing>'}</div>
+                    <div><strong>H1 Tag:</strong> {inspectedData.h1 || '<Missing>'}</div>
+                    <div><strong>Canonical:</strong> {inspectedData.canonicalUrl || '<None>'}</div>
+                    <div><strong>Robots:</strong> {inspectedData.robots || 'index, follow (default)'}</div>
+                    <div><strong>Language:</strong> {inspectedData.language || 'Unspecified'}</div>
+                    <div><strong>Links:</strong> {inspectedData.internalLinksCount} internal / {inspectedData.externalLinksCount} external</div>
+                    <div><strong>OG Image:</strong> {inspectedData.openGraph?.image || '<None>'}</div>
+                    <div><strong>Schemas:</strong> {inspectedData.schemaTypes?.join(', ') || '<None>'}</div>
                   </div>
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>Meta Description:</label>
-                    <textarea
-                      value={metaForm.pageDescription}
-                      onChange={(e) => setMetaForm({ ...metaForm, pageDescription: e.target.value })}
-                      rows={3}
-                      style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', boxSizing: 'border-box' }}
-                    />
+                </div>
+              )}
+            </div>
+
+            {/* MAIN 2-COLUMN WORKBENCH */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: '20px' }}>
+              {/* LEFT COLUMN: Metadata Editor & Variant Generator */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                    <h3 style={{ fontSize: '15px', fontWeight: 700 }}>2. SEO & Open Graph Editor</h3>
+                    <button
+                      onClick={handleGenerateMeta}
+                      disabled={generatingMeta}
+                      style={{ padding: '6px 14px', backgroundColor: 'var(--accent-blue)', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: generatingMeta ? 'not-allowed' : 'pointer' }}
+                    >
+                      {generatingMeta ? 'Synthesizing...' : '⚡ Synthesize 3 Variants'}
+                    </button>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {/* Title Input + Pixel Width Meter */}
                     <div>
-                      <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>Target Keyword:</label>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <label style={{ fontSize: '12px', fontWeight: 600 }}>Page Title:</label>
+                        <span style={{ fontSize: '11px', color: estimatePixelWidth(metaForm.pageTitle, 'title') > 580 ? '#f87171' : 'var(--text-secondary)' }}>
+                          {metaForm.pageTitle.length} chars | ~{estimatePixelWidth(metaForm.pageTitle, 'title')}px / 580px limit
+                          {estimatePixelWidth(metaForm.pageTitle, 'title') > 580 && ' ⚠️ Truncation risk'}
+                        </span>
+                      </div>
                       <input
                         type="text"
-                        value={metaForm.targetKeyword}
-                        onChange={(e) => setMetaForm({ ...metaForm, targetKeyword: e.target.value })}
-                        style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', boxSizing: 'border-box' }}
+                        value={metaForm.pageTitle}
+                        onChange={(e) => setMetaForm({ ...metaForm, pageTitle: e.target.value })}
+                        style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-secondary)', border: `1px solid ${estimatePixelWidth(metaForm.pageTitle, 'title') > 580 ? '#f87171' : 'var(--border-color)'}`, borderRadius: '6px', color: 'var(--text-primary)', boxSizing: 'border-box' }}
                       />
                     </div>
+
+                    {/* Multi-Candidate Title Variant Selector */}
+                    {generatedMeta?.titleCandidates && (
+                      <div style={{ padding: '10px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '11px' }}>
+                        <strong style={{ color: '#d8b4fe' }}>Title Candidates Generated:</strong>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
+                          {generatedMeta.titleCandidates.map((c: any, idx: number) => (
+                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ flex: 1 }}>
+                                <strong>[{c.variant}]:</strong> {c.text} <span style={{ color: 'var(--text-secondary)' }}>({c.estimatedPixelWidth}px)</span>
+                              </span>
+                              <button
+                                onClick={() => setMetaForm({ ...metaForm, pageTitle: c.text })}
+                                style={{ padding: '2px 8px', fontSize: '10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', cursor: 'pointer' }}
+                              >
+                                Apply
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Meta Description + Pixel Width Meter */}
                     <div>
-                      <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>Schema.org Type:</label>
-                      <select
-                        value={metaForm.schemaType}
-                        onChange={(e) => setMetaForm({ ...metaForm, schemaType: e.target.value as any })}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <label style={{ fontSize: '12px', fontWeight: 600 }}>Meta Description:</label>
+                        <span style={{ fontSize: '11px', color: estimatePixelWidth(metaForm.pageDescription, 'description') > 960 ? '#f87171' : 'var(--text-secondary)' }}>
+                          {metaForm.pageDescription.length} chars | ~{estimatePixelWidth(metaForm.pageDescription, 'description')}px / 960px limit
+                          {estimatePixelWidth(metaForm.pageDescription, 'description') > 960 && ' ⚠️ Snippet truncation risk'}
+                        </span>
+                      </div>
+                      <textarea
+                        value={metaForm.pageDescription}
+                        onChange={(e) => setMetaForm({ ...metaForm, pageDescription: e.target.value })}
+                        rows={3}
+                        style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-secondary)', border: `1px solid ${estimatePixelWidth(metaForm.pageDescription, 'description') > 960 ? '#f87171' : 'var(--border-color)'}`, borderRadius: '6px', color: 'var(--text-primary)', boxSizing: 'border-box' }}
+                      />
+                    </div>
+
+                    {/* Multi-Candidate Description Variant Selector */}
+                    {generatedMeta?.descriptionCandidates && (
+                      <div style={{ padding: '10px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '11px' }}>
+                        <strong style={{ color: '#d8b4fe' }}>Description Candidates Generated:</strong>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
+                          {generatedMeta.descriptionCandidates.map((c: any, idx: number) => (
+                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ flex: 1 }}>
+                                <strong>[{c.variant}]:</strong> {c.text} <span style={{ color: 'var(--text-secondary)' }}>({c.estimatedPixelWidth}px)</span>
+                              </span>
+                              <button
+                                onClick={() => setMetaForm({ ...metaForm, pageDescription: c.text })}
+                                style={{ padding: '2px 8px', fontSize: '10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', cursor: 'pointer' }}
+                              >
+                                Apply
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Target Keyword & Canonical URL */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                      <div>
+                        <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
+                          Target Keyword:
+                          {metaForm.targetKeyword && (
+                            <span style={{ marginLeft: '6px', fontSize: '10px', color: metaForm.pageTitle.toLowerCase().includes(metaForm.targetKeyword.toLowerCase()) ? '#34d399' : '#f87171' }}>
+                              {metaForm.pageTitle.toLowerCase().includes(metaForm.targetKeyword.toLowerCase()) ? '✓ in title' : '✗ missing in title'}
+                            </span>
+                          )}
+                        </label>
+                        <input
+                          type="text"
+                          value={metaForm.targetKeyword}
+                          onChange={(e) => setMetaForm({ ...metaForm, targetKeyword: e.target.value })}
+                          style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>Canonical URL:</label>
+                        <input
+                          type="text"
+                          value={metaForm.canonicalUrl}
+                          onChange={(e) => setMetaForm({ ...metaForm, canonicalUrl: e.target.value })}
+                          style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Social Image & Live Verification Probe */}
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <label style={{ fontSize: '12px', fontWeight: 600 }}>Social Image URL (og:image & twitter:image):</label>
+                        <button
+                          onClick={() => handleVerifyImage()}
+                          disabled={probingImage || !metaForm.imageUrl}
+                          style={{ fontSize: '11px', padding: '2px 8px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', cursor: probingImage ? 'not-allowed' : 'pointer' }}
+                        >
+                          {probingImage ? 'Probing...' : '🔍 Probe Image URL'}
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        value={metaForm.imageUrl}
+                        onChange={(e) => setMetaForm({ ...metaForm, imageUrl: e.target.value })}
+                        placeholder="https://chatr.chat/assets/og-cover.png (leave blank if no image)"
                         style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', boxSizing: 'border-box' }}
-                      >
-                        <option value="WebSite">WebSite</option>
-                        <option value="Article">Article</option>
-                        <option value="Organization">Organization</option>
-                        <option value="Product">Product / Offer</option>
-                        <option value="FAQPage">FAQPage</option>
-                        <option value="BreadcrumbList">BreadcrumbList</option>
-                      </select>
+                      />
+                      {/* Image Probe Result Callout */}
+                      {imageProbeResult && (
+                        <div style={{ marginTop: '6px', padding: '6px 10px', borderRadius: '4px', fontSize: '11px', backgroundColor: imageProbeResult.isValid ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)', border: `1px solid ${imageProbeResult.isValid ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.4)'}`, color: imageProbeResult.isValid ? '#6ee7b7' : '#fca5a5' }}>
+                          {imageProbeResult.isValid ? (
+                            <span>🟢 <strong>Image Verified:</strong> HTTP {imageProbeResult.httpStatus} | {imageProbeResult.contentType} | {imageProbeResult.contentLength ? (imageProbeResult.contentLength / 1024).toFixed(0) + ' KB' : 'Size unstated'} | Aspect Ratio: {imageProbeResult.dimensions?.aspectRatio || '1.91:1 recommended'}</span>
+                          ) : (
+                            <span>⚠️ <strong>Image Probe Warning:</strong> {imageProbeResult.errorMessage}</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Schema.org Dropdown & Zero-Invention Rule */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                      <div>
+                        <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>Schema.org Type:</label>
+                        <select
+                          value={metaForm.schemaType}
+                          onChange={(e) => setMetaForm({ ...metaForm, schemaType: e.target.value as any })}
+                          style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', boxSizing: 'border-box' }}
+                        >
+                          <option value="WebSite">WebSite</option>
+                          <option value="Article">Article</option>
+                          <option value="Organization">Organization</option>
+                          <option value="Product">Product / Offer</option>
+                          <option value="FAQPage">FAQPage</option>
+                          <option value="BreadcrumbList">BreadcrumbList</option>
+                          <option value="SoftwareApplication">SoftwareApplication</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>Author Name (Optional):</label>
+                        <input
+                          type="text"
+                          value={metaForm.authorName}
+                          onChange={(e) => setMetaForm({ ...metaForm, authorName: e.target.value })}
+                          placeholder="Leave empty to use Brand"
+                          style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ padding: '8px 12px', backgroundColor: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '6px', fontSize: '11px', color: '#fde68a' }}>
+                      ⚠️ <strong>Zero-Invention Safeguard:</strong> Dates (<code>datePublished</code>) and prices are never synthetically invented. They are only included if verified from page HTML or explicitly provided.
                     </div>
                   </div>
-                  <button
-                    onClick={handleGenerateMeta}
-                    disabled={generatingMeta}
-                    style={{ marginTop: '8px', padding: '10px', backgroundColor: 'var(--accent-blue)', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 600, cursor: generatingMeta ? 'not-allowed' : 'pointer' }}
-                  >
-                    {generatingMeta ? 'Synthesizing...' : '⚡ Synthesize Tags & Schema'}
-                  </button>
+                </div>
+
+                {/* Metadata Health & Explainable Diagnostic Report */}
+                <div style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <h3 style={{ fontSize: '15px', fontWeight: 700 }}>Diagnostic Health Report</h3>
+                      {metaValidationReport && (
+                        <span style={{ fontSize: '12px', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, backgroundColor: metaValidationReport.overallScore >= 80 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)', color: metaValidationReport.overallScore >= 80 ? '#34d399' : '#f87171' }}>
+                          {metaValidationReport.overallScore}/100 ({metaValidationReport.status.toUpperCase()})
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleRunDiagnostics()}
+                      disabled={validatingReport}
+                      style={{ padding: '4px 10px', fontSize: '11px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', cursor: validatingReport ? 'not-allowed' : 'pointer' }}
+                    >
+                      {validatingReport ? 'Checking...' : '🔄 Run Diagnostics'}
+                    </button>
+                  </div>
+
+                  {metaValidationReport ? (
+                    <div>
+                      {/* Category Breakdown */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px', marginBottom: '14px' }}>
+                        {Object.entries(metaValidationReport.categoryScores || {}).map(([cat, score]: [string, any]) => (
+                          <div key={cat} style={{ padding: '8px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', textAlign: 'center' }}>
+                            <div style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{cat.replace(/_/g, ' ')}</div>
+                            <div style={{ fontSize: '16px', fontWeight: 700, marginTop: '2px', color: score >= 80 ? '#34d399' : score >= 60 ? '#fde68a' : '#f87171' }}>{score}%</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Findings List */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
+                        {metaValidationReport.findings.map((f: any, idx: number) => (
+                          <div key={idx} style={{ padding: '6px 10px', backgroundColor: 'var(--bg-secondary)', borderRadius: '4px', fontSize: '11px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 700, color: f.severity === 'error' ? '#f87171' : f.severity === 'warning' ? '#fde68a' : '#93c5fd' }}>
+                              [{f.severity.toUpperCase()}]
+                            </span>
+                            <span style={{ flex: 1 }}>{f.message}</span>
+                            <code style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{f.ruleId}</code>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      Click "Run Diagnostics" or synthesize metadata to evaluate SEO health, social tags, and schema.org completeness.
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Previews Side */}
+              {/* RIGHT COLUMN: Cross-Platform Simulated Previews & Image Renderer */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {/* Google SERP Preview */}
                 <div style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '20px' }}>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', fontWeight: 600 }}>Google SERP Snippet Preview:</div>
-                  <div style={{ padding: '12px', backgroundColor: '#fff', borderRadius: '6px', color: '#202124' }}>
-                    <div style={{ fontSize: '12px', color: '#202124' }}>{generatedMeta?.previews?.googleSerp?.displayUrl || metaForm.pageUrl}</div>
-                    <div style={{ fontSize: '16px', color: '#1a0dab', fontWeight: 500, marginTop: '2px', cursor: 'pointer' }}>
-                      {generatedMeta?.previews?.googleSerp?.title || metaForm.pageTitle}
+                  {/* Platform Selector Tabs */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: 700 }}>3. Simulated Previews</div>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      {[
+                        { key: 'google_desktop', label: 'Google SERP' },
+                        { key: 'facebook', label: 'Facebook / LinkedIn' },
+                        { key: 'twitter_large', label: 'X (Large Card)' },
+                        { key: 'twitter_small', label: 'X (Summary)' },
+                      ].map((p) => (
+                        <button
+                          key={p.key}
+                          onClick={() => setPreviewPlatform(p.key as any)}
+                          style={{
+                            padding: '4px 8px',
+                            fontSize: '11px',
+                            fontWeight: previewPlatform === p.key ? 700 : 500,
+                            backgroundColor: previewPlatform === p.key ? 'var(--accent-blue)' : 'var(--bg-secondary)',
+                            color: previewPlatform === p.key ? '#fff' : 'var(--text-secondary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
                     </div>
-                    <div style={{ fontSize: '13px', color: '#4d5156', marginTop: '4px', lineHeight: '1.4' }}>
-                      {generatedMeta?.previews?.googleSerp?.snippet || metaForm.pageDescription}
-                    </div>
+                  </div>
+
+                  {/* Prominent Truthfulness Notice Banner */}
+                  <div style={{ padding: '6px 10px', backgroundColor: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '4px', fontSize: '11px', color: '#fde68a', marginBottom: '12px' }}>
+                    🟠 <strong>SIMULATED PREVIEW — NOT EXTERNALLY VERIFIED:</strong> Rendered locally from current inputs. Platform crawlers cache and format snippets independently.
+                  </div>
+
+                  {/* PREVIEW CONTAINER */}
+                  <div style={{ padding: '16px', backgroundColor: 'var(--bg-secondary)', borderRadius: '8px', minHeight: '220px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                    {/* Google Desktop SERP */}
+                    {previewPlatform === 'google_desktop' && (
+                      <div style={{ padding: '16px', backgroundColor: '#fff', borderRadius: '8px', color: '#202124', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#202124' }}>
+                          <span style={{ fontSize: '14px' }}>🌐</span>
+                          <span>{new URL(metaForm.canonicalUrl || metaForm.pageUrl || 'https://chatr.chat').hostname}</span>
+                          <span style={{ color: '#5f6368' }}>› {new URL(metaForm.canonicalUrl || metaForm.pageUrl || 'https://chatr.chat').pathname.replace(/^\//, '')}</span>
+                        </div>
+                        <div style={{ fontSize: '18px', color: '#1a0dab', fontWeight: 500, marginTop: '4px', lineHeight: '1.3', cursor: 'pointer' }}>
+                          {metaForm.pageTitle || 'Page Title Placeholder'}
+                        </div>
+                        <div style={{ fontSize: '13px', color: '#4d5156', marginTop: '6px', lineHeight: '1.4' }}>
+                          {metaForm.pageDescription || 'Meta description text snippet will be displayed here in search engine result pages.'}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Facebook / LinkedIn Open Graph Card */}
+                    {previewPlatform === 'facebook' && (
+                      <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden', backgroundColor: 'var(--bg-card)' }}>
+                        {metaForm.imageUrl ? (
+                          <div style={{ width: '100%', height: '180px', backgroundColor: '#0f172a', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <img
+                              src={metaForm.imageUrl}
+                              alt={metaForm.imageAlt || 'Social Card Image'}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.display = 'none';
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <div style={{ height: '120px', backgroundColor: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                            🖼️ No Share Image Specified (Using Text-Only Card)
+                          </div>
+                        )}
+                        <div style={{ padding: '12px' }}>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+                            {new URL(metaForm.canonicalUrl || metaForm.pageUrl || 'https://chatr.chat').hostname}
+                          </div>
+                          <div style={{ fontSize: '15px', fontWeight: 700, marginTop: '4px', color: 'var(--text-primary)' }}>
+                            {metaForm.pageTitle || 'Page Title'}
+                          </div>
+                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px', lineHeight: '1.4' }}>
+                            {metaForm.pageDescription || 'Meta description'}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Twitter / X Large Summary Card */}
+                    {previewPlatform === 'twitter_large' && (
+                      <div style={{ border: '1px solid var(--border-color)', borderRadius: '12px', overflow: 'hidden', backgroundColor: 'var(--bg-card)' }}>
+                        {metaForm.imageUrl ? (
+                          <div style={{ width: '100%', height: '180px', backgroundColor: '#0f172a', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <img
+                              src={metaForm.imageUrl}
+                              alt={metaForm.imageAlt || 'Twitter Large Image'}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.display = 'none';
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <div style={{ height: '120px', backgroundColor: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                            🖼️ No Share Image Specified (summary_large_image requires image)
+                          </div>
+                        )}
+                        <div style={{ padding: '12px' }}>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                            {new URL(metaForm.canonicalUrl || metaForm.pageUrl || 'https://chatr.chat').hostname}
+                          </div>
+                          <div style={{ fontSize: '14px', fontWeight: 700, marginTop: '2px', color: 'var(--text-primary)' }}>
+                            {metaForm.pageTitle}
+                          </div>
+                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                            {metaForm.pageDescription}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Twitter / X Small Summary Card */}
+                    {previewPlatform === 'twitter_small' && (
+                      <div style={{ border: '1px solid var(--border-color)', borderRadius: '12px', overflow: 'hidden', backgroundColor: 'var(--bg-card)', display: 'flex' }}>
+                        {metaForm.imageUrl ? (
+                          <div style={{ width: '120px', height: '120px', backgroundColor: '#0f172a', flexShrink: 0 }}>
+                            <img
+                              src={metaForm.imageUrl}
+                              alt={metaForm.imageAlt || 'Twitter Thumbnail'}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.display = 'none';
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <div style={{ width: '100px', height: '100px', backgroundColor: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontSize: '10px', flexShrink: 0 }}>
+                            No Image
+                          </div>
+                        )}
+                        <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                            {new URL(metaForm.canonicalUrl || metaForm.pageUrl || 'https://chatr.chat').hostname}
+                          </div>
+                          <div style={{ fontSize: '13px', fontWeight: 700, marginTop: '2px', color: 'var(--text-primary)' }}>
+                            {metaForm.pageTitle}
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px', maxHeight: '40px', overflow: 'hidden' }}>
+                            {metaForm.pageDescription}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* Twitter / X Large Card Preview */}
+                {/* Production Code & Export */}
                 <div style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '20px' }}>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', fontWeight: 600 }}>Twitter / X Summary Card Preview:</div>
-                  <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden', backgroundColor: 'var(--bg-secondary)' }}>
-                    <div style={{ height: '100px', backgroundColor: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>
-                      🖼️ {generatedMeta?.previews?.twitter?.image || 'Cover Image (1200x630)'}
-                    </div>
-                    <div style={{ padding: '12px' }}>
-                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{generatedMeta?.previews?.twitter?.domain || 'chatr.chat'}</div>
-                      <div style={{ fontSize: '14px', fontWeight: 700, marginTop: '2px' }}>{generatedMeta?.previews?.twitter?.title || metaForm.pageTitle}</div>
-                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>{generatedMeta?.previews?.twitter?.description || metaForm.pageDescription}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <h3 style={{ fontSize: '15px', fontWeight: 700 }}>4. Code & Export Snippets</h3>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      {generatedMeta?.htmlSnippet && (
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(generatedMeta.htmlSnippet);
+                            setNotification('✅ Production HTML snippet copied to clipboard!');
+                          }}
+                          style={{ padding: '4px 10px', backgroundColor: 'var(--accent-green)', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
+                        >
+                          📋 Copy HTML Snippet
+                        </button>
+                      )}
                     </div>
                   </div>
+
+                  {/* Code sub-tabs */}
+                  <div style={{ display: 'flex', gap: '4px', marginBottom: '8px' }}>
+                    {[
+                      { key: 'head', label: 'Full <head>' },
+                      { key: 'meta', label: 'Meta & Canonical' },
+                      { key: 'og', label: 'Open Graph' },
+                      { key: 'twitter', label: 'Twitter Card' },
+                      { key: 'schema', label: 'JSON-LD Schema' },
+                    ].map((t) => (
+                      <button
+                        key={t.key}
+                        onClick={() => setActiveCodeTab(t.key as any)}
+                        style={{
+                          padding: '3px 8px',
+                          fontSize: '11px',
+                          fontWeight: activeCodeTab === t.key ? 700 : 500,
+                          backgroundColor: activeCodeTab === t.key ? 'var(--bg-secondary)' : 'transparent',
+                          color: activeCodeTab === t.key ? 'var(--text-primary)' : 'var(--text-secondary)',
+                          border: 'none',
+                          borderBottom: activeCodeTab === t.key ? '2px solid var(--accent-blue)' : '2px solid transparent',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <pre style={{ padding: '12px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '11px', overflowX: 'auto', color: '#93c5fd', maxHeight: '180px', margin: 0 }}>
+                    {activeCodeTab === 'schema' && generatedMeta?.jsonLd
+                      ? JSON.stringify(generatedMeta.jsonLd, null, 2)
+                      : activeCodeTab === 'og' && generatedMeta?.openGraph
+                      ? Object.entries(generatedMeta.openGraph).map(([k, v]) => `<meta property="${k}" content="${v}" />`).join('\n')
+                      : activeCodeTab === 'twitter' && generatedMeta?.twitterCard
+                      ? Object.entries(generatedMeta.twitterCard).map(([k, v]) => `<meta name="${k}" content="${v}" />`).join('\n')
+                      : activeCodeTab === 'meta'
+                      ? `<title>${metaForm.pageTitle}</title>\n<meta name="description" content="${metaForm.pageDescription}" />\n<link rel="canonical" href="${metaForm.canonicalUrl || metaForm.pageUrl}" />\n<meta name="robots" content="index, follow" />`
+                      : generatedMeta?.htmlSnippet || '<!-- Click "Synthesize 3 Variants" to generate complete production head snippet -->'}
+                  </pre>
                 </div>
               </div>
             </div>
 
-            {/* Generated Code Snippet */}
-            {generatedMeta && (
-              <div style={{ marginTop: '24px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <h3 style={{ fontSize: '15px', fontWeight: 700 }}>Production HTML Snippet & Schema</h3>
+            {/* SECTION 5: Human Governance & Proposal Queue */}
+            <div style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+                <div>
+                  <h3 style={{ fontSize: '15px', fontWeight: 700 }}>5. Governance & Review-Gated Metadata Proposals</h3>
+                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    Changes must be submitted to the human review queue before production publishing.
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    value={proposalNotes}
+                    onChange={(e) => setProposalNotes(e.target.value)}
+                    placeholder="Operator review rationale..."
+                    style={{ padding: '6px 10px', fontSize: '12px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', width: '220px' }}
+                  />
                   <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(generatedMeta.htmlSnippet);
-                      setNotification('✅ HTML Snippet copied to clipboard!');
-                    }}
-                    style={{ padding: '6px 14px', backgroundColor: 'var(--accent-green)', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+                    onClick={handleSubmitProposal}
+                    disabled={submittingProposal}
+                    style={{ padding: '6px 14px', backgroundColor: 'var(--accent-purple)', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: submittingProposal ? 'not-allowed' : 'pointer' }}
                   >
-                    📋 Copy HTML Snippet
+                    {submittingProposal ? 'Submitting...' : '📥 Submit Proposal for Review'}
                   </button>
                 </div>
-                <pre style={{ padding: '16px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '12px', overflowX: 'auto', color: '#93c5fd' }}>
-                  {generatedMeta.htmlSnippet}
-                </pre>
               </div>
-            )}
+
+              {/* Proposals Table */}
+              {metaProposals.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {metaProposals.map((p) => {
+                    const statusColor = p.status === 'approved' ? '#34d399' : p.status === 'rejected' ? '#f87171' : '#fde68a';
+                    return (
+                      <div key={p.id} style={{ padding: '12px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', fontWeight: 700, backgroundColor: 'rgba(255,255,255,0.08)', color: statusColor, border: `1px solid ${statusColor}` }}>
+                              {p.status.toUpperCase()}
+                            </span>
+                            <span style={{ fontWeight: 700 }}>{p.payload?.title || p.url}</span>
+                            <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>({p.url})</span>
+                          </div>
+                          <div style={{ color: 'var(--text-secondary)', marginTop: '4px', fontSize: '11px' }}>
+                            {p.payload?.description}
+                          </div>
+                          {p.notes && <div style={{ marginTop: '4px', fontSize: '11px', color: '#93c5fd' }}>Notes: {p.notes}</div>}
+                        </div>
+
+                        {p.status === 'draft' && (
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <button
+                              onClick={() => handleDecideProposal(p.id, 'approved')}
+                              style={{ padding: '4px 10px', backgroundColor: 'rgba(16, 185, 129, 0.2)', border: '1px solid #34d399', color: '#34d399', borderRadius: '4px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
+                            >
+                              ✓ Approve
+                            </button>
+                            <button
+                              onClick={() => handleDecideProposal(p.id, 'rejected')}
+                              style={{ padding: '4px 10px', backgroundColor: 'rgba(239, 68, 68, 0.2)', border: '1px solid #f87171', color: '#f87171', borderRadius: '4px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
+                            >
+                              ✗ Reject
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  No pending proposals. Use "Submit Proposal for Review" to queue title and meta description updates.
+                </div>
+              )}
+            </div>
+
+            {/* SECTION 6: Batch Crawl Job Metadata Intelligence */}
+            <div style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+                <div>
+                  <h3 style={{ fontSize: '15px', fontWeight: 700 }}>6. Batch Metadata Intelligence from Crawl Jobs</h3>
+                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    Audit an entire crawled domain for missing tags, duplicate titles, and missing social images in one pass.
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <select
+                    value={selectedBatchCrawlId}
+                    onChange={(e) => setSelectedBatchCrawlId(e.target.value)}
+                    style={{ padding: '6px 10px', fontSize: '12px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)' }}
+                  >
+                    <option value="">-- Select Completed Crawl Job --</option>
+                    {crawlJobs.map((j) => (
+                      <option key={j.id} value={j.id}>{j.seed_urls?.[0] || j.label || j.id} ({j.pages_crawled} pages)</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={handleAuditBatch}
+                    disabled={auditingBatch}
+                    style={{ padding: '6px 14px', backgroundColor: 'var(--accent-blue)', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: auditingBatch ? 'not-allowed' : 'pointer' }}
+                  >
+                    {auditingBatch ? 'Auditing Batch...' : '📊 Audit Batch'}
+                  </button>
+                </div>
+              </div>
+
+              {batchAuditReport && (
+                <div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', marginBottom: '14px' }}>
+                    <div style={{ padding: '10px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Pages Audited</div>
+                      <div style={{ fontSize: '20px', fontWeight: 800, marginTop: '2px' }}>{batchAuditReport.totalPagesAudited}</div>
+                    </div>
+                    <div style={{ padding: '10px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Missing Titles</div>
+                      <div style={{ fontSize: '20px', fontWeight: 800, marginTop: '2px', color: batchAuditReport.summary.missingTitles > 0 ? '#f87171' : '#34d399' }}>
+                        {batchAuditReport.summary.missingTitles}
+                      </div>
+                    </div>
+                    <div style={{ padding: '10px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Missing Descriptions</div>
+                      <div style={{ fontSize: '20px', fontWeight: 800, marginTop: '2px', color: batchAuditReport.summary.missingDescriptions > 0 ? '#fde68a' : '#34d399' }}>
+                        {batchAuditReport.summary.missingDescriptions}
+                      </div>
+                    </div>
+                    <div style={{ padding: '10px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Missing Canonicals</div>
+                      <div style={{ fontSize: '20px', fontWeight: 800, marginTop: '2px', color: batchAuditReport.summary.missingCanonicals > 0 ? '#f87171' : '#34d399' }}>
+                        {batchAuditReport.summary.missingCanonicals}
+                      </div>
+                    </div>
+                    <div style={{ padding: '10px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Missing Social Images</div>
+                      <div style={{ fontSize: '20px', fontWeight: 800, marginTop: '2px', color: batchAuditReport.summary.missingSocialImages > 0 ? '#fde68a' : '#34d399' }}>
+                        {batchAuditReport.summary.missingSocialImages}
+                      </div>
+                    </div>
+                  </div>
+
+                  {batchAuditReport.anomalies?.missingTitles?.length > 0 && (
+                    <div style={{ fontSize: '11px', color: '#f87171', marginTop: '6px' }}>
+                      <strong>Pages missing title tags:</strong> {batchAuditReport.anomalies.missingTitles.join(', ')}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
