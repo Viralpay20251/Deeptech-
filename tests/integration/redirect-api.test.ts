@@ -43,7 +43,7 @@ describe('Redirect Router API Integration', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         brand_id: '00000000-0000-0000-0001-000000000001', // CHATR brand ID
-        target_url: 'https://chatr.ai/product/interactive-video',
+        target_url: 'https://chatr.chat',
         title: 'LinkedIn Launch Campaign',
         utm_source: 'linkedin',
         utm_medium: 'organic_social',
@@ -70,7 +70,7 @@ describe('Redirect Router API Integration', () => {
     expect(redirectRes.status).toBe(302);
     const location = redirectRes.headers.get('location');
     expect(location).toBeTruthy();
-    expect(location).toContain('https://chatr.ai/product/interactive-video');
+    expect(location).toContain('https://chatr.chat');
     expect(location).toContain('utm_source=linkedin');
     expect(location).toContain('utm_medium=organic_social');
     expect(location).toContain('utm_campaign=shoppable_video_beta');

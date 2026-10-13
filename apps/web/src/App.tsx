@@ -11,6 +11,8 @@ interface Brand {
     active_user_event_definition: string;
     prohibited_topics: string[];
     allowed_channels: string[];
+    secondary_domains?: string[];
+    [key: string]: any;
   };
 }
 
@@ -97,9 +99,10 @@ export function App() {
           id: '00000000-0000-0000-0001-000000000001',
           slug: 'chatr',
           display_name: 'CHATR',
-          base_url: 'https://chatr.ai',
+          base_url: 'https://chatr.chat',
           is_protected_production: true,
           config: {
+            secondary_domains: ['https://chatrchat.in'],
             voice_guidelines: 'Clear, modern, tech-forward, authentic.',
             active_user_event_definition: 'Meaningful AI productivity interaction in 30-day window.',
             prohibited_topics: ['unverified_agi_claims', 'fabricated_benchmarks'],
@@ -178,7 +181,7 @@ export function App() {
             { check_name: 'Substance & Value', passed: true, message: 'Substantive depth verified.' },
             { check_name: 'Brand Safety Policy', passed: true, message: 'Zero prohibited claims found.' },
           ],
-          citation_urls: ['https://chatr.ai/product/interactive-video'],
+          citation_urls: ['https://chatr.chat'],
           status: 'pending',
           created_at: new Date().toISOString(),
         },
@@ -298,7 +301,7 @@ export function App() {
 
     let signalData = {
       topic: 'Engineering Productivity & Autonomous Agent Workflows 2026',
-      source_url: 'https://chatr.ai/product/interactive-video',
+      source_url: 'https://chatr.chat',
       raw_text: 'Verified enterprise demand across video interaction tools, autonomous messaging workflows, and conversion metrics.',
       intent_type: 'commercial_investigation',
     };
@@ -306,14 +309,14 @@ export function App() {
     if (brandSlug === 'talentxcel') {
       signalData = {
         topic: 'Verified Technical Career Mobility & Skill Benchmarks 2026',
-        source_url: 'https://talentxcel.in/career-insights',
+        source_url: 'https://talentxcel.in',
         raw_text: 'Verified career mobility patterns, tailored technical resume parsing, and verified hiring requirements across tech roles.',
         intent_type: 'informational',
       };
     } else if (brandSlug === 'nuty-tales') {
       signalData = {
         topic: 'Artisanal Gastronomy & Wholesome Nutrient Sourcing 2026',
-        source_url: 'https://nutytales.com/gastronomy-journal',
+        source_url: 'https://nutytales.com',
         raw_text: 'Wholesome artisanal recipes, premium whole-food nutritional provenance, and verified culinary sourcing.',
         intent_type: 'informational',
       };
@@ -441,6 +444,32 @@ export function App() {
               </option>
             ))}
           </select>
+          {(() => {
+            const activeBrand = brands.find((b) => b.id === selectedBrandId);
+            if (!activeBrand) return null;
+            return (
+              <span
+                style={{
+                  fontSize: '11px',
+                  padding: '4px 8px',
+                  borderRadius: '6px',
+                  backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                  color: 'var(--accent-blue)',
+                  border: '1px solid rgba(59, 130, 246, 0.3)',
+                  fontFamily: 'monospace',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+                title={activeBrand.slug === 'chatr' ? 'Primary: chatr.chat | Secondary: chatrchat.in' : activeBrand.base_url}
+              >
+                🌐 {activeBrand.base_url}
+                {activeBrand.slug === 'chatr' && (
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '10px' }}>(+ chatrchat.in)</span>
+                )}
+              </span>
+            );
+          })()}
 
           {/* Quick Action: Trigger Vertical Slice */}
           <button

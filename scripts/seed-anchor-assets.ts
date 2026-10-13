@@ -20,7 +20,7 @@ async function seedAnchorAssets() {
   const linkChatr = await RedirectRouterService.createTrackedLink({
     workspaceId: WORKSPACE_ID,
     brandId: CHATR_ID,
-    targetUrl: 'https://chatr.ai/product/interactive-video',
+    targetUrl: 'https://chatr.chat',
     shortCode: 'chatr-v1',
     title: 'Shoppable Video Blueprint CTA',
     utmSource: 'os_published_surface',
@@ -36,7 +36,7 @@ async function seedAnchorAssets() {
   const linkTalent = await RedirectRouterService.createTrackedLink({
     workspaceId: WORKSPACE_ID,
     brandId: TALENT_ID,
-    targetUrl: 'https://talentxcel.com/benchmarks',
+    targetUrl: 'https://talentxcel.in',
     shortCode: 'talent-v1',
     title: 'Executive Compensation Index CTA',
     utmSource: 'os_published_surface',
@@ -52,7 +52,7 @@ async function seedAnchorAssets() {
   const linkNuty = await RedirectRouterService.createTrackedLink({
     workspaceId: WORKSPACE_ID,
     brandId: NUTY_ID,
-    targetUrl: 'https://nutytales.com/stories',
+    targetUrl: 'https://nutytales.com/shop',
     shortCode: 'nuty-v1',
     title: 'Screen-Free Audio Stories CTA',
     utmSource: 'os_published_surface',

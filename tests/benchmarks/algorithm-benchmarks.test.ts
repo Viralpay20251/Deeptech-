@@ -101,10 +101,10 @@ According to the official W3C and industry standards, durable systems minimize c
 
 Explore our technical benchmarks and workflow guides for engineering organizations seeking high reliability.
 
-[Explore CHATR Workflows](https://chatr.ai/guides/agent-workflows)
+[Explore CHATR Workflows](https://chatr.chat/guides/agent-workflows)
           `,
-          citation_urls: ['https://standards.org/guidelines', 'https://w3c.org/specs/agent-workflows'],
-          outbound_cta_url: 'https://chatr.ai/guides/agent-workflows',
+          citation_urls: ['https://chatr.chat/docs/guidelines', 'https://w3c.org/specs/agent-workflows'],
+          outbound_cta_url: 'https://chatr.chat/guides/agent-workflows',
           metadata: {
             seo_title: 'Architecting Resilient Multi-Agent Workflows: Best Practices 2026',
             seo_description: 'Comprehensive engineering guide to building durable agent workflows with idempotency and state persistence.',

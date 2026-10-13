@@ -37,8 +37,9 @@ assertNotProtectedDB(env.DATABASE_URL);
 
 export const pool = new Pool({
   connectionString: env.DATABASE_URL,
-  min: env.DATABASE_POOL_MIN,
-  max: env.DATABASE_POOL_MAX,
+  min: env.NODE_ENV === 'test' ? 0 : env.DATABASE_POOL_MIN,
+  max: env.NODE_ENV === 'test' ? 2 : env.DATABASE_POOL_MAX,
+  idleTimeoutMillis: env.NODE_ENV === 'test' ? 1000 : 10000,
   ssl: env.DATABASE_SSL ? { rejectUnauthorized: false } : false,
   application_name: 'autonomous-growth-os',
 });

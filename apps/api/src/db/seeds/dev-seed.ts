@@ -58,22 +58,25 @@ export async function runSeed(): Promise<void> {
       prohibited_topics: ['unverified_agi_claims', 'fabricated_benchmarks', 'unauthorised_competitor_disparagement', 'unsupported_pricing_discounts'],
       allowed_countries: ['US', 'GB', 'IN', 'CA', 'AU', 'DE', 'SG'],
       allowed_channels: ['organic_search', 'linkedin', 'x_twitter', 'youtube', 'reddit', 'developer_communities'],
+      secondary_domains: ['https://chatrchat.in'],
       cta_urls: {
-        explore: 'https://chatr.ai/explore',
-        get_started: 'https://chatr.ai/signup',
-        tools: 'https://chatr.ai/tools'
+        explore: 'https://chatr.chat',
+        get_started: 'https://chatr.chat',
+        tools: 'https://chatr.chat/product',
+        features: 'https://chatr.chat/features'
       },
       active_user_event_definition: 'Completed at least one meaningful AI interaction or initiated an active messaging workflow in a rolling 30-day window.',
       max_posts_per_day_per_channel: { linkedin: 2, x_twitter: 4, youtube: 1, reddit: 1 },
       requires_human_approval_before_publish: true,
       legal_review_required_categories: ['data_privacy_guarantees', 'enterprise_sla_claims'],
-      escalation_contact: 'lead-growth@chatr.ai'
+      escalation_contact: 'lead-growth@chatr.chat'
     };
 
     await client.query(
       `INSERT INTO brands (id, workspace_id, slug, display_name, base_url, is_protected_production, config)
-       VALUES ($1, $2, 'chatr', 'CHATR', 'https://chatr.ai', TRUE, $3)
+       VALUES ($1, $2, 'chatr', 'CHATR', 'https://chatr.chat', TRUE, $3)
        ON CONFLICT (id) DO UPDATE SET
+         base_url = EXCLUDED.base_url,
          config = EXCLUDED.config,
          is_protected_production = TRUE,
          updated_at = NOW()`,

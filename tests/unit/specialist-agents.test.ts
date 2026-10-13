@@ -63,7 +63,7 @@ describe('Specialist Agent Architecture & Comparative Spike Tests', () => {
       const queries: GscQueryRecord[] = [
         {
           query: 'conversational video shopping',
-          pageUrl: 'https://chatr.ai/product/video',
+          pageUrl: 'https://chatr.chat/product/video',
           impressions: 1200,
           clicks: 15,
           ctr: 0.012,
@@ -82,7 +82,7 @@ describe('Specialist Agent Architecture & Comparative Spike Tests', () => {
       const queries: GscQueryRecord[] = [
         {
           query: 'shoppable video platform',
-          pageUrl: 'https://chatr.ai/pricing',
+          pageUrl: 'https://chatr.chat/pricing',
           impressions: 3400,
           clicks: 40,
           ctr: 0.011, // 1.1% CTR is low for top 3
@@ -106,7 +106,7 @@ describe('Specialist Agent Architecture & Comparative Spike Tests', () => {
         </html>
       `;
 
-      const audit = agent.auditAeo(thinHtml, 'https://chatr.ai/spa');
+      const audit = agent.auditAeo(thinHtml, 'https://chatr.chat/spa');
       expect(audit.isAiDeliverable).toBe(false);
       expect(audit.findings.some((f) => f.rule === 'ai_page_body_empty')).toBe(true);
       expect(audit.findings.some((f) => f.rule === 'missing_structured_data')).toBe(true);
@@ -131,7 +131,7 @@ describe('Specialist Agent Architecture & Comparative Spike Tests', () => {
         </html>
       `;
 
-      const audit = agent.auditAeo(richHtml, 'https://chatr.ai/benchmarks');
+      const audit = agent.auditAeo(richHtml, 'https://chatr.chat/benchmarks');
       expect(audit.isAiDeliverable).toBe(true);
       expect(audit.findings.filter((f) => f.severity === 'critical')).toHaveLength(0);
       expect(audit.hasStructuredData).toBe(true);

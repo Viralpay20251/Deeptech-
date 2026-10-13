@@ -49,7 +49,7 @@ describe('RedirectRouterService: IP Privacy & Utilities', () => {
 
 describe('RedirectRouterService: URL & UTM Synthesis', () => {
   it('merges link UTM tags and incoming query parameters properly', () => {
-    const targetUrl = 'https://chatr.ai/pricing?ref=navbar';
+    const targetUrl = 'https://chatr.chat/pricing?ref=navbar';
     const dest = new URL(targetUrl);
 
     // Apply link UTMs
@@ -70,7 +70,7 @@ describe('RedirectRouterService: URL & UTM Synthesis', () => {
     }
 
     const finalUrl = dest.toString();
-    expect(finalUrl).toContain('https://chatr.ai/pricing');
+    expect(finalUrl).toContain('https://chatr.chat/pricing');
     expect(finalUrl).toContain('ref=navbar');
     expect(finalUrl).toContain('utm_source=linkedin');
     expect(finalUrl).toContain('utm_medium=organic_social');

@@ -20,12 +20,12 @@ describe('QualityGovernor', () => {
         'Here is a substantive analysis of workflow automation with verified outcomes.\n\n' +
         '## Evidence & Guidance\n' +
         'Based on verified engineering performance benchmarks.\n' +
-        'For next steps, see [CHATR Platform](https://chatr.ai/explore).',
+        'For next steps, see [CHATR Platform](https://chatr.chat/explore).',
       audience_description: 'Engineering managers and technical leads seeking productivity tools',
       intent_type: 'informational',
       opportunity_id: '00000000-0000-0000-0000-000000000001',
       source_evidence_ids: ['00000000-0000-0000-0000-000000000002'],
-      citation_urls: ['https://chatr.ai/docs/benchmarks-2026'],
+      citation_urls: ['https://chatr.chat/docs/benchmarks-2026'],
       asset_type: 'search_landing_page',
     };
 
@@ -42,7 +42,7 @@ describe('QualityGovernor', () => {
       body_markdown:
         '# Revolutionary AI\n\n' +
         'We have achieved unverified agi claims and out-compete all rivals.\n' +
-        'For next steps, visit https://chatr.ai/tools.',
+        'For next steps, visit https://chatr.chat/tools.',
       audience_description: 'General audience seeking advanced AI tools',
       intent_type: 'commercial_investigation',
       opportunity_id: '00000000-0000-0000-0000-000000000001',
@@ -60,7 +60,7 @@ describe('QualityGovernor', () => {
   it('fails Gate 3 if content body is too thin', () => {
     const thinAsset: Partial<ContentAsset> = {
       title: 'Short Note',
-      body_markdown: 'Click here: https://chatr.ai', // only 28 chars
+      body_markdown: 'Click here: https://chatr.chat', // only 28 chars
       audience_description: 'Job seekers',
       intent_type: 'informational',
       opportunity_id: '00000000-0000-0000-0000-000000000001',
@@ -80,7 +80,7 @@ describe('QualityGovernor', () => {
       body_markdown:
         '# Secrets to Instant Success\n\n' +
         'Here is some unverified advice without any citations or references.\n\n' +
-        'Visit https://chatr.ai/tools for more info.',
+        'Visit https://chatr.chat/tools for more info.',
       audience_description: 'General audience seeking tips',
       intent_type: 'informational',
       opportunity_id: '00000000-0000-0000-0000-000000000001',

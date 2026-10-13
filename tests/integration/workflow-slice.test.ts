@@ -51,7 +51,7 @@ const mockQuery = vi.fn(async (sql: string, params: any[] = []) => {
         {
           id: params[0],
           display_name: 'CHATR',
-          base_url: 'https://chatr.ai',
+          base_url: 'https://chatr.chat',
           is_protected_production: true,
           config: {
             voice_guidelines: 'Clear, modern, tech-forward, authentic.',
@@ -245,7 +245,7 @@ describe('End-to-End Vertical Slice Workflow with Specialist Agents', () => {
       idempotency_key: 'test_run_slice_002',
       signal_summary: {
         topic: 'Interactive Shoppable Video Solutions',
-        source_url: 'https://chatr.ai/product/interactive-video',
+        source_url: 'https://chatr.chat',
         raw_text: 'E-commerce brands seek interactive shoppable video workflows with instant checkout to improve conversion.',
         intent_type: 'commercial_investigation',
         search_queries: [
@@ -280,7 +280,7 @@ describe('End-to-End Vertical Slice Workflow with Specialist Agents', () => {
     expect(asset).toBeDefined();
     expect(asset.lifecycle_status).toBe('approval_required');
     expect(asset.citation_urls).not.toContain('https://standards.org/reference');
-    expect(asset.body_markdown).toContain('https://chatr.ai');
+    expect(asset.body_markdown).toContain('https://chatr.chat');
 
     // 4. Verify that an approval event is pending
     const approval = dbStore.approval_events.get(result.approval_event_id!);
@@ -303,7 +303,7 @@ describe('End-to-End Vertical Slice Workflow with Specialist Agents', () => {
       idempotency_key: 'test_run_slice_social_gate',
       signal_summary: {
         topic: 'Video Commerce Conversion Benchmarks',
-        source_url: 'https://chatr.ai/benchmarks/video-commerce',
+        source_url: 'https://chatr.chat/benchmarks/video-commerce',
         raw_text: 'Live video commerce benchmark data for high-growth DTC brands.',
         intent_type: 'informational',
         search_queries: [
@@ -374,7 +374,7 @@ describe('End-to-End Vertical Slice Workflow with Specialist Agents', () => {
       idempotency_key: 'test_halt_missing_queries_001',
       signal_summary: {
         topic: 'Hypothetical Untracked Topic',
-        source_url: 'https://chatr.ai/untracked',
+        source_url: 'https://chatr.chat/untracked',
         raw_text: 'Raw text without GSC records',
         intent_type: 'informational',
       },
@@ -393,7 +393,7 @@ describe('End-to-End Vertical Slice Workflow with Specialist Agents', () => {
       idempotency_key: 'test_simulation_mode_001',
       signal_summary: {
         topic: 'Simulated Workflow Innovation',
-        source_url: 'https://chatr.ai/simulated',
+        source_url: 'https://chatr.chat/simulated',
         raw_text: 'Simulated market signals for internal testing',
         intent_type: 'informational',
         is_simulation: true,
