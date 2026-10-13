@@ -83,14 +83,32 @@ export class QualityGovernor {
     );
 
     // Gate 4: Source Citations & Claims
-    const hasCitations = (asset.citation_urls && asset.citation_urls.length > 0) || (asset.source_evidence_ids && asset.source_evidence_ids.length > 0);
+    const validCitations = (asset.citation_urls ?? []).filter((url) => {
+      const lower = url.toLowerCase();
+      return (
+        (lower.startsWith('http://') || lower.startsWith('https://')) &&
+        !lower.includes('standards.org') &&
+        !lower.includes('example.com') &&
+        !lower.includes('placeholder')
+      );
+    });
+
+    const hasValidCitations = validCitations.length > 0;
+    const bodyText = asset.body_markdown ?? '';
+    const hasUnverifiedBodyStats =
+      /\b\d+%\s*(lift|increase|improvement|higher|conversion|gain|growth|boost)\b/i.test(bodyText) &&
+      validCitations.length === 0;
+
+    const gate4Passed = hasValidCitations && !hasUnverifiedBodyStats;
     recordCheck(
       'gate_04_citations_evidence',
       'Factual Citations & Provenance',
-      Boolean(hasCitations),
-      hasCitations
-        ? `Verified ${asset.citation_urls?.length ?? 0} citations and evidence links.`
-        : 'Asset contains no source citations or verified evidence references.'
+      gate4Passed,
+      gate4Passed
+        ? `Verified ${validCitations.length} authentic source citations and empirical evidence links.`
+        : hasUnverifiedBodyStats
+          ? 'Asset asserts numerical conversion/lift claims without verified citation backing.'
+          : 'Asset lacks authentic source citations. Generating domain paths does not constitute evidence.'
     );
 
     // Gate 5: Viable Onward CTA

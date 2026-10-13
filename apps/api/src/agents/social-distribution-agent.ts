@@ -52,6 +52,8 @@ export interface SocialPostCandidate {
   destinationTrackedUrl: string;
   mediaUrl?: string;
   hookStyle: 'data_driven' | 'contrarian' | 'problem_solution';
+  hasVerifiedEmpiricalMetric?: boolean;
+  evidenceCitation?: string;
 }
 
 export interface SocialValidationResult {
@@ -132,6 +134,14 @@ export class SocialDistributionAgent extends BaseAgent {
       );
     }
 
+    // Statistical claim verification: Any percentage lift or multiplier claims must have explicit source evidence
+    const hasUnverifiedStatistic = /\b\d+%\s*(lift|increase|improvement|higher|conversion|gain|growth|boost)\b/i.test(candidate.text);
+    if (hasUnverifiedStatistic && !candidate.hasVerifiedEmpiricalMetric) {
+      errors.push(
+        'Post contains unverified numerical statistical claims without empirical citation evidence. Fabricated statistics violate Gate 4 & 10.'
+      );
+    }
+
     return {
       isValid: errors.length === 0,
       channel: candidate.channel,
@@ -146,14 +156,19 @@ export class SocialDistributionAgent extends BaseAgent {
 
   /**
    * Generate 3 differentiated hook styles for multi-armed bandit exploration.
+   * Grounded in empirical telemetry — strictly prohibits fabricated metrics.
    */
   public generateHookVariants(topic: string, context: AgentExecutionContext): CreativeHookVariant[] {
     this.assertToolAllowed('generate_hooks');
 
+    const dataHeadline = context.empiricalEvidence?.metricValue
+      ? `Verified ${context.empiricalEvidence.metricName ?? 'benchmark'} across ${context.brandName} data reveals ${context.empiricalEvidence.metricValue}. Here is the technical breakdown on ${topic}:`
+      : `An evidence-backed engineering analysis of ${topic} for ${context.brandName}: here is what production telemetry reveals:`;
+
     return [
       {
         hookStyle: 'data_driven',
-        headline: `Recent benchmarks across ${context.brandName} data show that ${topic} improves conversion by up to 34%. Here is the breakdown:`,
+        headline: dataHeadline,
         estimatedCuriosityScore: 88,
       },
       {

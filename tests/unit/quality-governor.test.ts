@@ -25,7 +25,7 @@ describe('QualityGovernor', () => {
       intent_type: 'informational',
       opportunity_id: '00000000-0000-0000-0000-000000000001',
       source_evidence_ids: ['00000000-0000-0000-0000-000000000002'],
-      citation_urls: ['https://standards.org/benchmarks'],
+      citation_urls: ['https://chatr.ai/docs/benchmarks-2026'],
       asset_type: 'search_landing_page',
     };
 

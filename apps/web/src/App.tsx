@@ -110,7 +110,7 @@ export function App() {
           id: '00000000-0000-0000-0001-000000000002',
           slug: 'talentxcel',
           display_name: 'TalentXcel',
-          base_url: 'https://talentxcel.com',
+          base_url: 'https://talentxcel.in',
           is_protected_production: true,
           config: {
             voice_guidelines: 'Professional, empowering, pragmatic, actionable.',
@@ -306,7 +306,7 @@ export function App() {
     if (brandSlug === 'talentxcel') {
       signalData = {
         topic: 'Verified Technical Career Mobility & Skill Benchmarks 2026',
-        source_url: 'https://talentxcel.com/career-insights',
+        source_url: 'https://talentxcel.in/career-insights',
         raw_text: 'Verified career mobility patterns, tailored technical resume parsing, and verified hiring requirements across tech roles.',
         intent_type: 'informational',
       };

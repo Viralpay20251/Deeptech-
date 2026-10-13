@@ -140,7 +140,7 @@ describe('Specialist Agent Architecture & Comparative Spike Tests', () => {
     it('generates an anti-slop, evidence-grounded content brief', () => {
       const opportunity = {
         query: 'technical vetting benchmarks',
-        pageUrl: 'https://talentxcel.com/benchmarks',
+        pageUrl: 'https://talentxcel.in/benchmarks',
         category: 'striking_distance' as const,
         priorityScore: 85,
         rationale: 'High impressions',

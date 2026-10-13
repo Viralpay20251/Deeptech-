@@ -88,21 +88,22 @@ export async function runSeed(): Promise<void> {
       allowed_countries: ['US', 'GB', 'IN', 'CA', 'AE', 'SG'],
       allowed_channels: ['organic_search', 'linkedin', 'youtube', 'career_newsletters', 'reddit_career_hubs'],
       cta_urls: {
-        find_jobs: 'https://talentxcel.com/jobs',
-        career_tools: 'https://talentxcel.com/tools',
-        resume_review: 'https://talentxcel.com/resume-builder'
+        find_jobs: 'https://talentxcel.in/jobs',
+        career_tools: 'https://talentxcel.in/tools',
+        resume_review: 'https://talentxcel.in/resume-builder'
       },
       active_user_event_definition: 'Performed a verified career action: applied to an active role, completed CV analysis, or engaged with verified talent tools in 30 days.',
       max_posts_per_day_per_channel: { linkedin: 3, youtube: 1, career_newsletters: 1 },
       requires_human_approval_before_publish: true,
       legal_review_required_categories: ['employment_law_guidance', 'recruitment_compliance'],
-      escalation_contact: 'operations@talentxcel.com'
+      escalation_contact: 'operations@talentxcel.in'
     };
 
     await client.query(
       `INSERT INTO brands (id, workspace_id, slug, display_name, base_url, is_protected_production, config)
-       VALUES ($1, $2, 'talentxcel', 'TalentXcel', 'https://talentxcel.com', TRUE, $3)
+       VALUES ($1, $2, 'talentxcel', 'TalentXcel', 'https://talentxcel.in', TRUE, $3)
        ON CONFLICT (id) DO UPDATE SET
+         base_url = EXCLUDED.base_url,
          config = EXCLUDED.config,
          is_protected_production = TRUE,
          updated_at = NOW()`,

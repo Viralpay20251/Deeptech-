@@ -88,7 +88,7 @@ const mockQuery = vi.fn(async (sql: string, params: any[] = []) => {
 
   // Insert opportunity
   if (lower.includes('insert into opportunities')) {
-    const row = { id: params[0], title: params[4], status: params[6] };
+    const row = { id: params[0], title: params[4], status: params[6], is_demo_data: params[8] };
     dbStore.opportunities.set(row.id, row);
     return { rows: [row] };
   }
@@ -118,6 +118,7 @@ const mockQuery = vi.fn(async (sql: string, params: any[] = []) => {
       source_evidence_ids: params[9],
       citation_urls: params[10],
       quality_check_results: JSON.parse(params[11] ?? '[]'),
+      is_demo_data: params[12],
     };
     dbStore.content_assets.set(row.id, row);
     return { rows: [row] };
@@ -305,6 +306,14 @@ describe('End-to-End Vertical Slice Workflow with Specialist Agents', () => {
         source_url: 'https://chatr.ai/benchmarks/video-commerce',
         raw_text: 'Live video commerce benchmark data for high-growth DTC brands.',
         intent_type: 'informational',
+        search_queries: [
+          {
+            query: 'video commerce conversion benchmarks',
+            impressions: 340,
+            clicks: 22,
+            position: 8.4,
+          },
+        ],
       },
     };
 
@@ -355,5 +364,50 @@ describe('End-to-End Vertical Slice Workflow with Specialist Agents', () => {
     const linkedinPost = distributionPlan.plannedPosts.find((p) => p.channel === 'linkedin')!;
     expect(linkedinPost).toBeDefined();
     expect(linkedinPost.validation.isValid).toBe(true);
+  });
+
+  it('halts execution when no search queries are provided and is_simulation is false', async () => {
+    const emptyQueriesPayload = {
+      workspace_id: workspaceId,
+      brand_id: brandId,
+      workflow_definition_id: 'demand_discovery_vertical_slice',
+      idempotency_key: 'test_halt_missing_queries_001',
+      signal_summary: {
+        topic: 'Hypothetical Untracked Topic',
+        source_url: 'https://chatr.ai/untracked',
+        raw_text: 'Raw text without GSC records',
+        intent_type: 'informational',
+      },
+    };
+
+    const result = await WorkflowOrchestrator.execute(emptyQueriesPayload);
+    expect(result.status).toBe('stopped_pending_evidence');
+    expect(result.message).toContain('No verified Google Search Console queries provided');
+  });
+
+  it('proceeds in explicit simulation mode when is_simulation is true and marks data as demo', async () => {
+    const simulationPayload = {
+      workspace_id: workspaceId,
+      brand_id: brandId,
+      workflow_definition_id: 'demand_discovery_vertical_slice',
+      idempotency_key: 'test_simulation_mode_001',
+      signal_summary: {
+        topic: 'Simulated Workflow Innovation',
+        source_url: 'https://chatr.ai/simulated',
+        raw_text: 'Simulated market signals for internal testing',
+        intent_type: 'informational',
+        is_simulation: true,
+      },
+    };
+
+    const result = await WorkflowOrchestrator.execute(simulationPayload);
+    expect(result.status).toBe('awaiting_approval');
+    expect(result.opportunity_id).toBeDefined();
+
+    const opp = dbStore.opportunities.get(result.opportunity_id!);
+    expect(opp.is_demo_data).toBe(true);
+
+    const asset = dbStore.content_assets.get(result.asset_id!);
+    expect(asset.is_demo_data).toBe(true);
   });
 });

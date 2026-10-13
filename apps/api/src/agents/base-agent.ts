@@ -26,6 +26,11 @@ export interface AgentExecutionContext {
   brandId: UUID;
   brandName: string;
   locale?: string;
+  empiricalEvidence?: {
+    metricName?: string;
+    metricValue?: string | number;
+    sourceUrl?: string;
+  };
 }
 
 export interface AgentExecutionOutput<T = unknown> {

@@ -54,12 +54,13 @@ export interface WorkflowTriggerInput {
       ctr?: number;
       position: number;
     }>;
+    is_simulation?: boolean;
   };
 }
 
 export interface WorkflowExecutionResult {
   run_id: string;
-  status: WorkflowStatus;
+  status: WorkflowStatus | 'stopped_pending_evidence';
   opportunity_id?: string;
   asset_id?: string;
   approval_event_id?: string;
@@ -179,42 +180,67 @@ export class WorkflowOrchestrator {
         brandName: brand.display_name,
       };
 
-      const gscRecords: GscQueryRecord[] =
-        signal_summary.search_queries && signal_summary.search_queries.length > 0
-          ? signal_summary.search_queries.map((q) => ({
-              query: q.query,
-              pageUrl:
-                q.pageUrl ??
-                (signal_summary.source_url ??
-                  `${brand.base_url}/p/${encodeURIComponent(q.query.toLowerCase().replace(/\s+/g, '-'))}`),
-              impressions: q.impressions,
-              clicks: q.clicks,
-              ctr: q.ctr ?? (q.impressions > 0 ? q.clicks / q.impressions : 0.03),
-              position: q.position,
-            }))
-          : [
-              {
-                query: signal_summary.topic,
-                pageUrl:
-                  signal_summary.source_url ??
-                  `${brand.base_url}/p/${encodeURIComponent(signal_summary.topic.toLowerCase().replace(/\s+/g, '-'))}`,
-                impressions: 420,
-                clicks: 18,
-                ctr: 0.042,
-                position: 13.8, // Striking distance (page 2)
-              },
-            ];
+      const isSimulation = Boolean(signal_summary.is_simulation);
+      const hasVerifiedQueries =
+        Array.isArray(signal_summary.search_queries) && signal_summary.search_queries.length > 0;
+
+      if (!hasVerifiedQueries && !isSimulation) {
+        // Enforce Gate: Stop workflow until empirical Search Console data is supplied
+        const haltMessage =
+          `Workflow halted: No verified Google Search Console queries provided for topic "${signal_summary.topic}". Supply empirical GSC queries or explicitly execute with is_simulation=true.`;
+
+        logger.warn(
+          { workspace_id, brand_id, topic: signal_summary.topic },
+          'Workflow execution halted: Missing verified search queries'
+        );
+
+        await query(
+          `UPDATE workflow_runs
+           SET status = 'failed',
+               error_message = $1,
+               completed_at = NOW(),
+               metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{halt_reason}', '"missing_empirical_search_evidence"')
+           WHERE id = $2`,
+          [haltMessage, runId]
+        );
+
+        return {
+          run_id: runId,
+          status: 'stopped_pending_evidence',
+          message: haltMessage,
+        };
+      }
+
+      const gscRecords: GscQueryRecord[] = hasVerifiedQueries
+        ? signal_summary.search_queries!.map((q) => ({
+            query: q.query,
+            pageUrl: q.pageUrl ?? (signal_summary.source_url || brand.base_url),
+            impressions: q.impressions,
+            clicks: q.clicks,
+            ctr: q.ctr ?? (q.impressions > 0 ? q.clicks / q.impressions : 0.03),
+            position: q.position,
+          }))
+        : [
+            {
+              query: signal_summary.topic,
+              pageUrl: signal_summary.source_url || brand.base_url,
+              impressions: 0,
+              clicks: 0,
+              ctr: 0,
+              position: 0,
+            },
+          ];
 
       const classifiedOpportunities = searchAgent.classifyQueries(gscRecords);
       const topOpp = classifiedOpportunities[0] ?? {
         query: signal_summary.topic,
-        pageUrl:
-          signal_summary.source_url ??
-          `${brand.base_url}/p/${encodeURIComponent(signal_summary.topic.toLowerCase().replace(/\s+/g, '-'))}`,
-        category: 'striking_distance' as const,
-        priorityScore: 85,
-        rationale: `Proven search demand for "${signal_summary.topic}". Striking-distance query on page 2.`,
-        recommendedAction: 'Expand page depth with evidence-grounded content brief.',
+        pageUrl: signal_summary.source_url || brand.base_url,
+        category: 'emerging_demand' as const,
+        priorityScore: isSimulation ? 60 : 75,
+        rationale: isSimulation
+          ? `[SIMULATION RUN] Hypothesis topic "${signal_summary.topic}" evaluated without empirical GSC traffic.`
+          : `Grounded in verified search demand for "${signal_summary.topic}".`,
+        recommendedAction: 'Develop evidence-backed technical brief.',
       };
 
       const searchBrief = searchAgent.generateBrief(topOpp, agentContext);
@@ -224,8 +250,8 @@ export class WorkflowOrchestrator {
       await query(
         `INSERT INTO topic_clusters
          (id, workspace_id, label, intent_type, trend_type, signal_count, is_demo_data)
-         VALUES ($1, $2, $3, $4, 'emerging', 1, FALSE)`,
-        [topicClusterId, workspace_id, signal_summary.topic, signal_summary.intent_type]
+         VALUES ($1, $2, $3, $4, 'emerging', 1, $5)`,
+        [topicClusterId, workspace_id, signal_summary.topic, signal_summary.intent_type, isSimulation]
       );
 
       // ─── STEP 2: Opportunity Scoring Agent ─────────────────────────────────
@@ -252,7 +278,7 @@ export class WorkflowOrchestrator {
       await query(
         `INSERT INTO opportunities
          (id, workspace_id, brand_id, topic_cluster_id, title, description, status, proposed_asset_type, target_locale, is_demo_data)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'search_landing_page', $8, FALSE)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'search_landing_page', $8, $9)`,
         [
           oppId,
           workspace_id,
@@ -262,6 +288,7 @@ export class WorkflowOrchestrator {
           `High-intent topic with verified search demand for ${brand.display_name}`,
           scoreEvaluation.isSelected ? 'selected' : 'rejected',
           signal_summary.target_locale ?? 'en',
+          isSimulation,
         ]
       );
 
@@ -342,20 +369,25 @@ export class WorkflowOrchestrator {
       }
 
       // ─── STEP 4: Quality & Policy Governor Audit ───────────────────────────
-      const rawCitations = [
+      const candidateCitations = [
         signal_summary.source_url,
-        searchBrief.internalLinkTargets[0],
+        ...(hasVerifiedQueries
+          ? signal_summary.search_queries!.map((q) => q.pageUrl).filter((u): u is string => !!u)
+          : []),
       ].filter(
         (url): url is string =>
-          !!url && !url.includes('standards.org') && !url.includes('example.com')
+          !!url &&
+          !url.includes('standards.org') &&
+          !url.includes('example.com') &&
+          !url.includes('/resources/') &&
+          !url.includes('/p/') &&
+          (url.startsWith('http://') || url.startsWith('https://'))
       );
 
-      const verifiedCitations =
-        rawCitations.length > 0
-          ? rawCitations
-          : [
-              `${brand.base_url}/resources/${encodeURIComponent(searchBrief.targetQuery.toLowerCase().replace(/\s+/g, '-'))}`,
-            ];
+      const verifiedCitations = Array.from(new Set(candidateCitations));
+      if (verifiedCitations.length === 0 && isSimulation) {
+        verifiedCitations.push(brand.base_url);
+      }
 
       const proposedAsset = {
         title: searchBrief.suggestedTitle || `Comprehensive Guide: ${signal_summary.topic}`,
@@ -377,7 +409,7 @@ export class WorkflowOrchestrator {
           title, body_markdown, audience_description, intent_type, locale,
           authoring_agent, source_evidence_ids, citation_urls, quality_check_results, is_demo_data)
          VALUES ($1, $2, $3, $4, 'search_landing_page', $5, $6, $7, $8, $9, 'en',
-                 'content_builder', $10, $11, $12, FALSE)`,
+                 'content_builder', $10, $11, $12, $13)`,
         [
           assetId,
           workspace_id,
@@ -391,6 +423,7 @@ export class WorkflowOrchestrator {
           proposedAsset.source_evidence_ids,
           proposedAsset.citation_urls,
           JSON.stringify(audit.results),
+          isSimulation,
         ]
       );
 
@@ -407,7 +440,9 @@ export class WorkflowOrchestrator {
           workspace_id,
           assetId,
           audit.allPassed
-            ? 'Quality checks passed (10/10). Awaiting human operator sign-off before distribution scheduling.'
+            ? isSimulation
+              ? '[SIMULATION] Quality checks passed. Synthetic hypothesis run — requires verification of empirical demand before external distribution.'
+              : `Quality checks passed (10/10). Grounded in verified GSC telemetry with ${verifiedCitations.length} source citation(s). Awaiting human operator sign-off.`
             : `Quality checks flagged issues: ${audit.rejectionReasons.join('; ')}`,
         ]
       );
@@ -427,6 +462,13 @@ export class WorkflowOrchestrator {
         quality_checks_passed: audit.allPassed,
         quality_results: audit.results,
         brief: searchBrief,
+        evidence_provenance: {
+          has_empirical_gsc: hasVerifiedQueries,
+          query_count: hasVerifiedQueries ? signal_summary.search_queries!.length : 0,
+          is_simulation: isSimulation,
+          verified_citations: verifiedCitations,
+          audited_at: new Date().toISOString(),
+        },
       };
 
       await query(
@@ -485,8 +527,9 @@ export class WorkflowOrchestrator {
       title: string;
       body_markdown: string;
       lifecycle_status: string;
+      citation_urls?: string[];
     }>(
-      `SELECT id, brand_id, title, body_markdown, lifecycle_status FROM content_assets WHERE id = $1 AND workspace_id = $2`,
+      `SELECT id, brand_id, title, body_markdown, lifecycle_status, citation_urls FROM content_assets WHERE id = $1 AND workspace_id = $2`,
       [assetId, workspaceId]
     );
 
@@ -559,6 +602,8 @@ export class WorkflowOrchestrator {
         hashtags: [`#${brandName.toLowerCase().replace(/\s+/g, '')}`, '#engineering'],
         destinationTrackedUrl: trackedDestinationUrl,
         hookStyle: primaryHook.hookStyle,
+        hasVerifiedEmpiricalMetric: Boolean(asset.citation_urls && asset.citation_urls.length > 0),
+        evidenceCitation: asset.citation_urls?.[0],
       };
 
       const validation = socialAgent.validatePost(candidate);

@@ -58,10 +58,11 @@ describe('Algorithm Lab: Contextual Bandits & Adaptive Allocation', () => {
   });
 
   it('runBanditSimulationBenchmark measures cumulative lift over fixed baseline', () => {
-    const simulation = runBanditSimulationBenchmark(arms, 500);
+    const rounds = 1500;
+    const simulation = runBanditSimulationBenchmark(arms, rounds);
 
-    expect(simulation.fixedReport.totalRounds).toBe(500);
-    expect(simulation.thompsonReport.totalRounds).toBe(500);
+    expect(simulation.fixedReport.totalRounds).toBe(rounds);
+    expect(simulation.thompsonReport.totalRounds).toBe(rounds);
     expect(simulation.thompsonReport.optimalArmSelectionPct).toBeGreaterThan(
       simulation.fixedReport.optimalArmSelectionPct
     );
