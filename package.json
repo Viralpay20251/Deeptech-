@@ -9,7 +9,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present && node scripts/copy-dist.js",
     "dev": "npm run dev --workspace=apps/api",
     "dev:web": "npm run dev --workspace=apps/web",
     "lint": "npm run lint --workspaces --if-present",
