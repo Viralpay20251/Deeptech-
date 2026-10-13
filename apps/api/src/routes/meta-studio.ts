@@ -244,7 +244,25 @@ metaStudioRouter.get('/proposals', async (req: Request, res: Response) => {
 // ─── POST /proposals/:id/decide ───────────────────────────────────────────────
 metaStudioRouter.post('/proposals/:id/decide', async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { decision, notes } = req.body as { decision?: 'approved' | 'rejected'; notes?: string };
+  const { decision, notes, operator_id, override_grounding_warnings } = req.body as {
+    decision?: 'approved' | 'rejected';
+    notes?: string;
+    operator_id?: string;
+    override_grounding_warnings?: boolean;
+  };
+  const workspaceId: string =
+    typeof req.body?.workspace_id === 'string'
+      ? req.body.workspace_id
+      : typeof req.headers['x-workspace-id'] === 'string'
+      ? req.headers['x-workspace-id']
+      : typeof req.query['workspace_id'] === 'string'
+      ? (req.query['workspace_id'] as string)
+      : '00000000-0000-0000-0000-000000000001';
+
+  if (!id) {
+    res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Proposal ID is required' } });
+    return;
+  }
 
   if (!decision || !['approved', 'rejected'].includes(decision)) {
     res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'decision must be approved or rejected' } });
@@ -252,15 +270,160 @@ metaStudioRouter.post('/proposals/:id/decide', async (req: Request, res: Respons
   }
 
   try {
-    await query(
-      `UPDATE metadata_proposals
-       SET status = $1, approved_at = NOW(), notes = COALESCE($2, notes), updated_at = NOW()
-       WHERE id = $3`,
-      [decision, notes || null, id]
-    );
+    const result = await MetaStudioService.decideProposal({
+      proposalId: String(id),
+      workspaceId,
+      operatorId: operator_id,
+      decision,
+      notes,
+      overrideGroundingWarnings: Boolean(override_grounding_warnings),
+    });
 
-    res.json({ success: true, message: `Metadata proposal ${id} marked as ${decision}.` });
-  } catch (err) {
-    res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: (err as Error).message } });
+    res.json({
+      success: true,
+      message: `Metadata proposal ${id} marked as ${decision} with verified tenant and operator authorization.`,
+      data: result.proposal,
+    });
+  } catch (err: any) {
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({
+      success: false,
+      error: {
+        code: err.code || 'DECIDE_FAILED',
+        message: err.message,
+        details: err.details,
+      },
+    });
   }
 });
+
+// ─── POST /validate-grounding ─────────────────────────────────────────────────
+metaStudioRouter.post('/validate-grounding', async (req: Request, res: Response) => {
+  const { proposed_payload, observed_payload } = req.body as {
+    proposed_payload?: Record<string, any>;
+    observed_payload?: Record<string, any>;
+  };
+
+  if (!proposed_payload) {
+    res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'proposed_payload is required' } });
+    return;
+  }
+
+  try {
+    const report = MetaStudioService.validateSchemaGrounding(proposed_payload, observed_payload);
+    res.json({ success: true, data: report });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'GROUNDING_CHECK_FAILED', message: (err as Error).message } });
+  }
+});
+
+// ─── GET /cross-page-intelligence ─────────────────────────────────────────────
+metaStudioRouter.get('/cross-page-intelligence', async (req: Request, res: Response) => {
+  const workspaceId = (req.query['workspace_id'] as string) || '00000000-0000-0000-0000-000000000001';
+  const brandId = req.query['brand_id'] as string | undefined;
+  const crawlJobId = req.query['crawl_job_id'] as string | undefined;
+
+  try {
+    const report = await MetaStudioService.getCrossPageIntelligence(workspaceId, brandId, crawlJobId);
+    res.json({ success: true, data: report });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'CROSS_PAGE_INTELLIGENCE_FAILED', message: (err as Error).message } });
+  }
+});
+
+// ─── POST /external-validate ──────────────────────────────────────────────────
+metaStudioRouter.post('/external-validate', async (req: Request, res: Response) => {
+  const { snippet, type, validator_url } = req.body as {
+    snippet?: string;
+    type?: 'schema' | 'html';
+    validator_url?: string;
+  };
+
+  if (!snippet) {
+    res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'snippet is required' } });
+    return;
+  }
+
+  try {
+    const result = await MetaStudioService.runExternalValidation(snippet, type || 'schema', {
+      externalValidatorUrl: validator_url,
+    });
+    res.json({ success: true, data: result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'EXTERNAL_VALIDATION_FAILED', message: (err as Error).message } });
+  }
+});
+
+// ─── POST /outcomes ───────────────────────────────────────────────────────────
+metaStudioRouter.post('/outcomes', async (req: Request, res: Response) => {
+  const { workspace_id, proposal_id, baseline_metrics, current_metrics } = req.body as {
+    workspace_id?: string;
+    proposal_id?: string;
+    baseline_metrics?: Record<string, any>;
+    current_metrics?: Record<string, any>;
+  };
+
+  if (!proposal_id || !baseline_metrics || !current_metrics) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: 'proposal_id, baseline_metrics, and current_metrics are required' },
+    });
+    return;
+  }
+
+  const workspaceId = workspace_id || '00000000-0000-0000-0000-000000000001';
+
+  try {
+    const measurement = await MetaStudioService.recordOutcomeMeasurement({
+      workspaceId,
+      proposalId: proposal_id,
+      baselineMetrics: baseline_metrics,
+      currentMetrics: current_metrics,
+    });
+    res.json({ success: true, message: 'Outcome measurement recorded.', data: measurement });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'RECORD_OUTCOME_FAILED', message: (err as Error).message } });
+  }
+});
+
+// ─── GET /outcomes ────────────────────────────────────────────────────────────
+metaStudioRouter.get('/outcomes', async (req: Request, res: Response) => {
+  const workspaceId = (req.query['workspace_id'] as string) || '00000000-0000-0000-0000-000000000001';
+  const brandId = req.query['brand_id'] as string | undefined;
+  const proposalId = req.query['proposal_id'] as string | undefined;
+
+  try {
+    const outcomes = await MetaStudioService.getOutcomes(workspaceId, brandId, proposalId);
+    res.json({ success: true, data: outcomes, meta: { total: outcomes.length } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'GET_OUTCOMES_FAILED', message: (err as Error).message } });
+  }
+});
+
+// ─── GET /intelligence-graph ──────────────────────────────────────────────────
+metaStudioRouter.get('/intelligence-graph', async (req: Request, res: Response) => {
+  const workspaceId = (req.query['workspace_id'] as string) || '00000000-0000-0000-0000-000000000001';
+  let brandId = req.query['brand_id'] as string | undefined;
+
+  try {
+    if (!brandId) {
+      // Find first brand in workspace
+      const brandRes = await query<{ id: string }>(
+        `SELECT id FROM brands WHERE workspace_id = $1 ORDER BY created_at ASC LIMIT 1`,
+        [workspaceId]
+      );
+      brandId = brandRes.rows[0]?.id;
+    }
+
+    if (!brandId) {
+      res.status(400).json({ success: false, error: { code: 'BRAND_NOT_FOUND', message: 'No brand found for workspace' } });
+      return;
+    }
+
+    const graph = await MetaStudioService.getMetadataIntelligenceGraph(workspaceId, brandId);
+    res.json({ success: true, data: graph });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'INTELLIGENCE_GRAPH_FAILED', message: (err as Error).message } });
+  }
+});
+

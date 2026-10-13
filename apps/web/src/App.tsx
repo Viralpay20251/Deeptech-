@@ -152,6 +152,41 @@ export function App() {
   const [batchAuditReport, setBatchAuditReport] = useState<any | null>(null);
   const [auditingBatch, setAuditingBatch] = useState<boolean>(false);
 
+  // Meta Studio Subview & Intelligence Graph State
+  const [metaStudioSubView, setMetaStudioSubView] = useState<'graph' | 'workbench' | 'cross_page'>('graph');
+  const [intelligenceGraph, setIntelligenceGraph] = useState<{
+    nodes: any[];
+    summary: {
+      totalUrls: number;
+      stageBreakdown: Record<string, number>;
+      criticalIssuesCount: number;
+      totalClicksDelta: number;
+      totalImpressionsDelta: number;
+    };
+  } | null>(null);
+  const [loadingGraph, setLoadingGraph] = useState<boolean>(false);
+  const [graphStageFilter, setGraphStageFilter] = useState<string>('all');
+  const [graphSearchQuery, setGraphSearchQuery] = useState<string>('');
+
+  // Cross-Page Intelligence State
+  const [crossPageIntelligence, setCrossPageIntelligence] = useState<any | null>(null);
+  const [loadingCrossPage, setLoadingCrossPage] = useState<boolean>(false);
+  const [activeCrossPageTab, setActiveCrossPageTab] = useState<
+    'duplicate_titles' | 'duplicate_descriptions' | 'canonical_conflicts' | 'missing_tags' | 'missing_images'
+  >('duplicate_titles');
+
+  // Outcome Measurement Modal State
+  const [outcomeModalProposal, setOutcomeModalProposal] = useState<any | null>(null);
+  const [outcomeForm, setOutcomeForm] = useState({
+    baselineClicks: 25,
+    baselineImpressions: 500,
+    baselinePosition: 12.4,
+    currentClicks: 48,
+    currentImpressions: 890,
+    currentPosition: 7.8,
+  });
+  const [savingOutcome, setSavingOutcome] = useState<boolean>(false);
+
   // Evidence State
   const [claimText, setClaimText] = useState<string>('CHATR delivers 48% higher engagement and is the industry-leading messaging solution.');
   const [claimCitationUrl, setClaimCitationUrl] = useState<string>('https://chatr.chat/docs/guidelines');
@@ -173,6 +208,13 @@ export function App() {
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
+
+  useEffect(() => {
+    if (selectedBrandId) {
+      fetchIntelligenceGraph(selectedBrandId);
+      fetchCrossPageIntelligence(selectedBrandId);
+    }
+  }, [selectedBrandId]);
 
   const fetchBrands = async () => {
     try {
@@ -364,8 +406,9 @@ export function App() {
     return Math.round(text.length * factor);
   };
 
-  const handleInspectUrl = async () => {
-    if (!metaForm.pageUrl) {
+  const handleInspectUrl = async (overrideUrl?: string | unknown) => {
+    const targetUrl = typeof overrideUrl === 'string' ? overrideUrl : metaForm.pageUrl;
+    if (!targetUrl) {
       setNotification('❌ Please enter a page URL to inspect.');
       return;
     }
@@ -377,7 +420,7 @@ export function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          url: metaForm.pageUrl,
+          url: targetUrl,
           brand_id: activeBrand?.id,
           allowed_domains: activeBrand ? [activeBrand.base_url, ...(activeBrand.config?.secondary_domains || [])] : undefined,
         }),
@@ -385,6 +428,14 @@ export function App() {
       const data = await res.json();
       if (data.success) {
         setInspectedData(data.data);
+        setMetaForm((prev) => ({
+          ...prev,
+          pageUrl: targetUrl,
+          pageTitle: data.data.title || prev.pageTitle,
+          pageDescription: data.data.metaDescription || prev.pageDescription,
+          canonicalUrl: data.data.canonicalUrl || targetUrl,
+          imageUrl: data.data.openGraph?.image || prev.imageUrl,
+        }));
         handleRunDiagnostics(data.data);
         setNotification(`✅ Page inspected: HTTP ${data.data.statusCode} in ${data.data.fetchDurationMs}ms (${(data.data.htmlBytes / 1024).toFixed(1)} KB)`);
       } else {
@@ -543,6 +594,7 @@ export function App() {
         setNotification('✅ Proposal submitted for human review & governance!');
         setProposalNotes('');
         fetchProposals();
+        fetchIntelligenceGraph(selectedBrandId);
       } else {
         setNotification(`❌ Proposal submission failed: ${data.error?.message}`);
       }
@@ -553,13 +605,19 @@ export function App() {
     }
   };
 
-  const handleDecideProposal = async (id: string, decision: 'approved' | 'rejected') => {
+  const handleDecideProposal = async (
+    id: string,
+    decision: 'approved' | 'rejected',
+    overrideGroundingWarnings: boolean = false
+  ) => {
     try {
       const res = await fetch(`/api/v1/meta-studio/proposals/${id}/decide`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          workspace_id: '00000000-0000-0000-0000-000000000001',
           decision,
+          override_grounding_warnings: overrideGroundingWarnings,
           notes: `Reviewed and ${decision} in Control Room workbench.`,
         }),
       });
@@ -567,11 +625,103 @@ export function App() {
       if (data.success) {
         setNotification(`✅ Proposal marked as ${decision}.`);
         fetchProposals();
+        fetchIntelligenceGraph(selectedBrandId);
+      } else if (data.error?.code === 'UNGROUNDED_SCHEMA_VIOLATION') {
+        const force = window.confirm(
+          `⚠️ Grounding Violation: ${data.error?.message}\n\nDo you want to override grounding warnings and approve anyway?`
+        );
+        if (force) {
+          await handleDecideProposal(id, 'approved', true);
+        }
       } else {
         setNotification(`❌ Decision failed: ${data.error?.message}`);
       }
     } catch (err) {
       setNotification(`❌ Decision error: ${(err as Error).message}`);
+    }
+  };
+
+  const fetchIntelligenceGraph = async (brandId?: string) => {
+    const targetBrand = brandId || selectedBrandId || brands[0]?.id;
+    if (!targetBrand) return;
+    setLoadingGraph(true);
+    try {
+      const res = await fetch(`/api/v1/meta-studio/intelligence-graph?brand_id=${targetBrand}&workspace_id=00000000-0000-0000-0000-000000000001`);
+      const data = await res.json();
+      if (data.success) {
+        setIntelligenceGraph(data.data);
+      }
+    } catch {
+      // gracefully handle offline/fallback
+    } finally {
+      setLoadingGraph(false);
+    }
+  };
+
+  const fetchCrossPageIntelligence = async (brandId?: string) => {
+    const targetBrand = brandId || selectedBrandId || brands[0]?.id;
+    setLoadingCrossPage(true);
+    try {
+      const url = targetBrand
+        ? `/api/v1/meta-studio/cross-page-intelligence?brand_id=${targetBrand}&workspace_id=00000000-0000-0000-0000-000000000001`
+        : `/api/v1/meta-studio/cross-page-intelligence?workspace_id=00000000-0000-0000-0000-000000000001`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.success) {
+        setCrossPageIntelligence(data.data);
+      }
+    } catch {
+      // gracefully handle offline/fallback
+    } finally {
+      setLoadingCrossPage(false);
+    }
+  };
+
+  const handleInspectAndFixUrl = async (url: string) => {
+    setMetaStudioSubView('workbench');
+    setMetaForm((prev) => ({
+      ...prev,
+      pageUrl: url,
+      canonicalUrl: url,
+    }));
+    await handleInspectUrl(url);
+  };
+
+  const handleSaveOutcomeMeasurement = async () => {
+    if (!outcomeModalProposal) return;
+    setSavingOutcome(true);
+    try {
+      const res = await fetch('/api/v1/meta-studio/outcomes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspace_id: '00000000-0000-0000-0000-000000000001',
+          proposal_id: outcomeModalProposal.id,
+          baseline_metrics: {
+            clicks: Number(outcomeForm.baselineClicks),
+            impressions: Number(outcomeForm.baselineImpressions),
+            position: Number(outcomeForm.baselinePosition),
+          },
+          current_metrics: {
+            clicks: Number(outcomeForm.currentClicks),
+            impressions: Number(outcomeForm.currentImpressions),
+            position: Number(outcomeForm.currentPosition),
+          },
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNotification(`✅ Measured outcome recorded for ${outcomeModalProposal.url}!`);
+        setOutcomeModalProposal(null);
+        fetchIntelligenceGraph(selectedBrandId);
+        fetchProposals();
+      } else {
+        setNotification(`❌ Failed to record outcome: ${data.error?.message}`);
+      }
+    } catch (err) {
+      setNotification(`❌ Error recording outcome: ${(err as Error).message}`);
+    } finally {
+      setSavingOutcome(false);
     }
   };
 
@@ -878,7 +1028,7 @@ export function App() {
           { key: 'opportunities', label: 'Opportunities' },
           { key: 'crawler', label: '🕸️ Web Crawler v2' },
           { key: 'seo', label: '🔍 SEO Workbench' },
-          { key: 'meta_studio', label: '🏷️ Meta Tags Studio' },
+          { key: 'meta_studio', label: '🏷️ Metadata Studio & Graph' },
           { key: 'connectors', label: '🔌 Connectors (Wave 1-3)' },
           { key: 'evidence', label: '📜 Evidence & Claims' },
         ].map((t) => (
@@ -1247,9 +1397,793 @@ export function App() {
               </div>
             </div>
 
-            {/* SECTION 1: Safe Target URL Inspector & Ingest */}
-            <div style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px' }}>
-              <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '8px' }}>1. Target URL & Live Inspection (SSRF-Protected)</div>
+            {/* Studio Sub-Navigation Tabs */}
+            <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+              <button
+                onClick={() => setMetaStudioSubView('graph')}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: metaStudioSubView === 'graph' ? 'var(--accent-blue)' : 'var(--bg-card)',
+                  color: metaStudioSubView === 'graph' ? '#fff' : 'var(--text-primary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  fontWeight: 700,
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                📊 Metadata Intelligence Graph
+                {intelligenceGraph?.summary && (
+                  <span style={{ fontSize: '11px', padding: '1px 6px', borderRadius: '10px', backgroundColor: 'rgba(255,255,255,0.2)' }}>
+                    {intelligenceGraph.summary.totalUrls}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setMetaStudioSubView('workbench')}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: metaStudioSubView === 'workbench' ? 'var(--accent-blue)' : 'var(--bg-card)',
+                  color: metaStudioSubView === 'workbench' ? '#fff' : 'var(--text-primary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  fontWeight: 700,
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                🛠️ Studio Workbench & Inspector
+              </button>
+              <button
+                onClick={() => setMetaStudioSubView('cross_page')}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: metaStudioSubView === 'cross_page' ? 'var(--accent-blue)' : 'var(--bg-card)',
+                  color: metaStudioSubView === 'cross_page' ? '#fff' : 'var(--text-primary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  fontWeight: 700,
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                🌐 Cross-Page Intelligence & Audits
+                {crossPageIntelligence?.duplicateTitles?.length > 0 && (
+                  <span style={{ fontSize: '11px', padding: '1px 6px', borderRadius: '10px', backgroundColor: 'rgba(239, 68, 68, 0.4)', color: '#fca5a5' }}>
+                    {crossPageIntelligence.duplicateTitles.length} dupes
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* SUB-VIEW 1: Metadata Intelligence Graph */}
+            {metaStudioSubView === 'graph' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {/* Graph Controls & Review-Gate Notice */}
+                <div style={{
+                  backgroundColor: 'var(--bg-card)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  padding: '16px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '12px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)' }}>Brand:</span>
+                      <select
+                        value={selectedBrandId}
+                        onChange={(e) => {
+                          setSelectedBrandId(e.target.value);
+                          fetchIntelligenceGraph(e.target.value);
+                          fetchCrossPageIntelligence(e.target.value);
+                        }}
+                        style={{
+                          backgroundColor: 'var(--bg-secondary)',
+                          color: 'var(--text-primary)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '6px',
+                          padding: '6px 12px',
+                          fontSize: '13px',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {brands.map((b) => (
+                          <option key={b.id} value={b.id}>{b.display_name} ({b.base_url})</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <span style={{
+                      fontSize: '11px',
+                      padding: '4px 10px',
+                      borderRadius: '4px',
+                      backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                      border: '1px solid rgba(245, 158, 11, 0.4)',
+                      color: '#fde68a',
+                      fontWeight: 600
+                    }}>
+                      🔒 PROTECTED PROD: Review-Gated Changes Only
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      placeholder="Filter URLs or paths..."
+                      value={graphSearchQuery}
+                      onChange={(e) => setGraphSearchQuery(e.target.value)}
+                      style={{
+                        padding: '6px 10px',
+                        backgroundColor: 'var(--bg-secondary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        color: 'var(--text-primary)',
+                        width: '200px',
+                      }}
+                    />
+                    <button
+                      onClick={() => fetchIntelligenceGraph(selectedBrandId)}
+                      disabled={loadingGraph}
+                      style={{
+                        padding: '6px 14px',
+                        backgroundColor: 'var(--bg-secondary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: 'var(--text-primary)',
+                        cursor: loadingGraph ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {loadingGraph ? 'Refreshing...' : '🔄 Refresh Graph'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* 6-Stage Intelligence Lifecycle Pipeline Visualization */}
+                <div style={{
+                  backgroundColor: 'var(--bg-card)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  padding: '20px',
+                }}>
+                  <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Unified Metadata Intelligence Pipeline</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 400 }}>
+                      Shared intelligence layer linking crawls, diagnostics, evidence, proposals, and verified outcomes
+                    </span>
+                  </div>
+
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                    gap: '10px',
+                  }}>
+                    {[
+                      { stage: 'crawled', step: '1', title: 'Crawled URL', desc: 'Fetched HTML & status', color: '#94a3b8' },
+                      { stage: 'diagnosed', step: '2', title: 'Observed HTML', desc: 'Extracted facts & tags', color: '#f87171' },
+                      { stage: 'evidence_linked', step: '3', title: 'SEO Findings', desc: 'Diagnosed issues & gaps', color: '#fbbf24' },
+                      { stage: 'evidence_linked', step: '4', title: 'Source Evidence', desc: 'Substantiated facts', color: '#60a5fa' },
+                      { stage: 'proposal_drafted', step: '5', title: 'Proposal Draft', desc: 'Grounded tag synthesis', color: '#c084fc' },
+                      { stage: 'approved', step: '6', title: 'Human Approval', desc: 'Operator reviewed', color: '#a78bfa' },
+                      { stage: 'outcomes_measured', step: '7', title: 'Measured Impact', desc: 'Verified clicks & CTR', color: '#34d399' },
+                    ].map((st, i) => (
+                      <div
+                        key={i}
+                        onClick={() => setGraphStageFilter(graphStageFilter === st.stage ? 'all' : st.stage)}
+                        style={{
+                          padding: '12px',
+                          backgroundColor: graphStageFilter === st.stage ? 'rgba(59, 130, 246, 0.15)' : 'var(--bg-secondary)',
+                          border: `1px solid ${graphStageFilter === st.stage ? 'var(--accent-blue)' : 'var(--border-color)'}`,
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          textAlign: 'center',
+                          transition: 'all 0.15s ease-in-out',
+                        }}
+                      >
+                        <div style={{ fontSize: '10px', fontWeight: 800, color: st.color, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          Stage {st.step}
+                        </div>
+                        <div style={{ fontSize: '13px', fontWeight: 700, marginTop: '2px' }}>
+                          {st.title}
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                          {st.desc}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Summary Metrics & Impact Cards */}
+                {intelligenceGraph?.summary && (
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                    gap: '12px',
+                  }}>
+                    <div style={{ padding: '16px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
+                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Total URLs in Graph</div>
+                      <div style={{ fontSize: '24px', fontWeight: 800, marginTop: '4px', color: 'var(--text-primary)' }}>
+                        {intelligenceGraph.summary.totalUrls}
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                        Across active crawl snapshots
+                      </div>
+                    </div>
+
+                    <div style={{ padding: '16px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
+                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Critical / Error Issues</div>
+                      <div style={{
+                        fontSize: '24px',
+                        fontWeight: 800,
+                        marginTop: '4px',
+                        color: intelligenceGraph.summary.criticalIssuesCount > 0 ? '#f87171' : '#34d399',
+                      }}>
+                        {intelligenceGraph.summary.criticalIssuesCount}
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                        Missing titles, canonical mismatches
+                      </div>
+                    </div>
+
+                    <div style={{ padding: '16px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
+                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Measured Clicks Delta</div>
+                      <div style={{
+                        fontSize: '24px',
+                        fontWeight: 800,
+                        marginTop: '4px',
+                        color: intelligenceGraph.summary.totalClicksDelta >= 0 ? '#34d399' : '#f87171',
+                      }}>
+                        {intelligenceGraph.summary.totalClicksDelta >= 0 ? `+${intelligenceGraph.summary.totalClicksDelta}` : intelligenceGraph.summary.totalClicksDelta}
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                        Post-approval search performance
+                      </div>
+                    </div>
+
+                    <div style={{ padding: '16px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
+                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Measured Impressions Delta</div>
+                      <div style={{
+                        fontSize: '24px',
+                        fontWeight: 800,
+                        marginTop: '4px',
+                        color: intelligenceGraph.summary.totalImpressionsDelta >= 0 ? '#60a5fa' : '#f87171',
+                      }}>
+                        {intelligenceGraph.summary.totalImpressionsDelta >= 0 ? `+${intelligenceGraph.summary.totalImpressionsDelta}` : intelligenceGraph.summary.totalImpressionsDelta}
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                        Organic visibility expansion
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Filter Stage Pills */}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 600 }}>Filter Stage:</span>
+                  {[
+                    { id: 'all', label: 'All Pages' },
+                    { id: 'crawled', label: 'Crawled' },
+                    { id: 'diagnosed', label: 'Diagnosed' },
+                    { id: 'evidence_linked', label: 'Evidence Linked' },
+                    { id: 'proposal_drafted', label: 'Proposal Drafted' },
+                    { id: 'approved', label: 'Approved' },
+                    { id: 'outcomes_measured', label: 'Outcomes Measured' },
+                  ].map((f) => {
+                    const count = f.id === 'all'
+                      ? (intelligenceGraph?.nodes?.length || 0)
+                      : (intelligenceGraph?.summary?.stageBreakdown?.[f.id] || 0);
+                    const active = graphStageFilter === f.id;
+                    return (
+                      <button
+                        key={f.id}
+                        onClick={() => setGraphStageFilter(f.id)}
+                        style={{
+                          padding: '4px 10px',
+                          fontSize: '11px',
+                          fontWeight: active ? 700 : 500,
+                          borderRadius: '20px',
+                          backgroundColor: active ? 'var(--accent-blue)' : 'var(--bg-secondary)',
+                          color: active ? '#fff' : 'var(--text-secondary)',
+                          border: '1px solid var(--border-color)',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {f.label} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Intelligence Graph Nodes List */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {(() => {
+                    const filteredNodes = (intelligenceGraph?.nodes || [])
+                      .filter((n) => graphStageFilter === 'all' || n.pipelineStage === graphStageFilter)
+                      .filter((n) => !graphSearchQuery || n.url.toLowerCase().includes(graphSearchQuery.toLowerCase()));
+
+                    if (filteredNodes.length === 0) {
+                      return (
+                        <div style={{ padding: '32px', textAlign: 'center', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                          {loadingGraph ? 'Loading Metadata Intelligence Graph...' : 'No URLs matched the selected stage and search filters.'}
+                        </div>
+                      );
+                    }
+
+                    return filteredNodes.map((node, idx) => {
+                      const stageColors: Record<string, { bg: string; text: string; label: string }> = {
+                        crawled: { bg: 'rgba(148, 163, 184, 0.15)', text: '#94a3b8', label: 'Stage 1: Crawled' },
+                        diagnosed: { bg: 'rgba(239, 68, 68, 0.15)', text: '#f87171', label: 'Stage 2: Diagnosed Issues' },
+                        evidence_linked: { bg: 'rgba(59, 130, 246, 0.15)', text: '#60a5fa', label: 'Stage 3: Evidence Linked' },
+                        proposal_drafted: { bg: 'rgba(168, 85, 247, 0.15)', text: '#c084fc', label: 'Stage 4: Proposal Drafted' },
+                        approved: { bg: 'rgba(16, 185, 129, 0.15)', text: '#34d399', label: 'Stage 5: Approved by Operator' },
+                        outcomes_measured: { bg: 'rgba(52, 211, 153, 0.2)', text: '#10b981', label: 'Stage 6: Outcomes Measured' },
+                      };
+                      const st = stageColors[node.pipelineStage] || stageColors['crawled'];
+
+                      return (
+                        <div
+                          key={node.url || idx}
+                          style={{
+                            backgroundColor: 'var(--bg-card)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '8px',
+                            padding: '16px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '12px',
+                          }}
+                        >
+                          {/* Node Header */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                backgroundColor: st.bg,
+                                color: st.text,
+                                border: `1px solid ${st.text}`,
+                              }}>
+                                {st.label}
+                              </span>
+                              <a
+                                href={node.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', textDecoration: 'none' }}
+                              >
+                                {node.pathname || node.url} ↗
+                              </a>
+                              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                ({node.url})
+                              </span>
+                            </div>
+
+                            <button
+                              onClick={() => handleInspectAndFixUrl(node.url)}
+                              style={{
+                                padding: '5px 12px',
+                                backgroundColor: 'var(--accent-blue)',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              ⚡ Inspect & Fix in Studio
+                            </button>
+                          </div>
+
+                          {/* Node Details Grid */}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px', fontSize: '12px' }}>
+                            {/* Observed HTML Facts */}
+                            <div style={{ padding: '10px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px' }}>
+                              <div style={{ fontWeight: 700, color: '#93c5fd', marginBottom: '4px' }}>
+                                🔵 Observed Page State:
+                              </div>
+                              <div><strong>Title:</strong> {node.snapshot?.title || '<Missing Title>'}</div>
+                              <div style={{ color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                <strong>Description:</strong> {node.snapshot?.metaDesc || '<Missing Description>'}
+                              </div>
+                              <div style={{ marginTop: '2px', fontSize: '11px' }}>
+                                <strong>Canonical:</strong> <code>{node.snapshot?.canonical || '<None>'}</code>
+                              </div>
+                            </div>
+
+                            {/* SEO Findings & Diagnostics */}
+                            <div style={{ padding: '10px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px' }}>
+                              <div style={{ fontWeight: 700, color: '#f87171', marginBottom: '4px' }}>
+                                🔴 Diagnosed Findings ({node.findings?.length || 0}):
+                              </div>
+                              {node.findings && node.findings.length > 0 ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                  {node.findings.slice(0, 3).map((f: any, fIdx: number) => (
+                                    <div key={fIdx} style={{ fontSize: '11px' }}>
+                                      <span style={{
+                                        color: f.severity === 'critical' || f.severity === 'error' ? '#f87171' : '#fde68a',
+                                        fontWeight: 700,
+                                        marginRight: '4px'
+                                      }}>
+                                        [{f.severity?.toUpperCase()}]:
+                                      </span>
+                                      {f.title}
+                                    </div>
+                                  ))}
+                                  {node.findings.length > 3 && (
+                                    <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                                      +{node.findings.length - 3} more issues
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div style={{ color: '#34d399', fontSize: '11px' }}>
+                                  ✓ No active diagnostic violations
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Proposal & Human Governance */}
+                            <div style={{ padding: '10px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px' }}>
+                              <div style={{ fontWeight: 700, color: '#d8b4fe', marginBottom: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span>🟣 Metadata Proposal:</span>
+                                {node.proposal && (
+                                  <span style={{
+                                    fontSize: '10px',
+                                    padding: '1px 6px',
+                                    borderRadius: '4px',
+                                    fontWeight: 700,
+                                    backgroundColor: node.proposal.status === 'approved' ? 'rgba(16, 185, 129, 0.2)' : node.proposal.status === 'rejected' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                                    color: node.proposal.status === 'approved' ? '#34d399' : node.proposal.status === 'rejected' ? '#f87171' : '#fde68a',
+                                  }}>
+                                    {node.proposal.status.toUpperCase()}
+                                  </span>
+                                )}
+                              </div>
+                              {node.proposal ? (
+                                <div>
+                                  <div style={{ fontWeight: 600 }}>{node.proposal.payload?.title}</div>
+                                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                    {node.proposal.payload?.description}
+                                  </div>
+
+                                  {/* Grounding Status */}
+                                  <div style={{ marginTop: '4px', fontSize: '11px' }}>
+                                    Grounding: {node.proposal.grounding_status === 'grounded' ? (
+                                      <span style={{ color: '#34d399' }}>✓ Grounded to facts</span>
+                                    ) : (
+                                      <span style={{ color: '#f87171' }}>⚠️ Grounding warning</span>
+                                    )}
+                                  </div>
+
+                                  {/* Governance Actions */}
+                                  {node.proposal.status === 'draft' && (
+                                    <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                                      <button
+                                        onClick={() => handleDecideProposal(node.proposal.id, 'approved')}
+                                        style={{ padding: '3px 8px', backgroundColor: 'rgba(16, 185, 129, 0.2)', border: '1px solid #34d399', color: '#34d399', borderRadius: '4px', fontSize: '10px', fontWeight: 600, cursor: 'pointer' }}
+                                      >
+                                        ✓ Approve
+                                      </button>
+                                      <button
+                                        onClick={() => handleDecideProposal(node.proposal.id, 'rejected')}
+                                        style={{ padding: '3px 8px', backgroundColor: 'rgba(239, 68, 68, 0.2)', border: '1px solid #f87171', color: '#f87171', borderRadius: '4px', fontSize: '10px', fontWeight: 600, cursor: 'pointer' }}
+                                      >
+                                        ✗ Reject
+                                      </button>
+                                    </div>
+                                  )}
+
+                                  {node.proposal.status === 'approved' && !node.outcome && (
+                                    <div style={{ marginTop: '6px' }}>
+                                      <button
+                                        onClick={() => setOutcomeModalProposal(node.proposal)}
+                                        style={{ padding: '3px 8px', backgroundColor: 'rgba(52, 211, 153, 0.2)', border: '1px solid #34d399', color: '#34d399', borderRadius: '4px', fontSize: '10px', fontWeight: 600, cursor: 'pointer' }}
+                                      >
+                                        📈 Record Measured Outcome
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>
+                                  No draft proposal submitted. Click "Inspect & Fix in Studio" to generate optimizations.
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Measured Outcome Impact */}
+                            {node.outcome && (
+                              <div style={{ padding: '10px', backgroundColor: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '6px' }}>
+                                <div style={{ fontWeight: 700, color: '#34d399', marginBottom: '4px' }}>
+                                  🟢 Verified Outcome Impact:
+                                </div>
+                                <div style={{ fontSize: '11px' }}>
+                                  Clicks: <strong>{node.outcome.baseline_metrics?.clicks || 0} ➔ {node.outcome.current_metrics?.clicks || 0}</strong> ({node.outcome.metrics_delta?.clicksDelta >= 0 ? `+${node.outcome.metrics_delta.clicksDelta}` : node.outcome.metrics_delta?.clicksDelta})
+                                </div>
+                                <div style={{ fontSize: '11px', marginTop: '2px' }}>
+                                  Impressions: <strong>{node.outcome.baseline_metrics?.impressions || 0} ➔ {node.outcome.current_metrics?.impressions || 0}</strong> ({node.outcome.metrics_delta?.impressionsDelta >= 0 ? `+${node.outcome.metrics_delta.impressionsDelta}` : node.outcome.metrics_delta?.impressionsDelta})
+                                </div>
+                                {node.outcome.metrics_delta?.ctrDelta !== undefined && (
+                                  <div style={{ fontSize: '11px', marginTop: '2px', color: '#6ee7b7' }}>
+                                    CTR Delta: <strong>{node.outcome.metrics_delta.ctrDelta >= 0 ? `+${node.outcome.metrics_delta.ctrDelta}%` : `${node.outcome.metrics_delta.ctrDelta}%`}</strong>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+            )}
+
+            {/* SUB-VIEW 2: Cross-Page Intelligence & Audits */}
+            {metaStudioSubView === 'cross_page' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {/* Header & Refresh */}
+                <div style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                  <div>
+                    <h3 style={{ fontSize: '16px', fontWeight: 700, margin: 0 }}>Cross-Page Metadata Intelligence & Conflict Audits</h3>
+                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                      Identifies duplicate titles, duplicate descriptions, canonical conflicts, and missing core tags across crawl snapshots.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => fetchCrossPageIntelligence(selectedBrandId)}
+                    disabled={loadingCrossPage}
+                    style={{ padding: '6px 14px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', cursor: loadingCrossPage ? 'not-allowed' : 'pointer' }}
+                  >
+                    {loadingCrossPage ? 'Auditing...' : '🔄 Refresh Audit'}
+                  </button>
+                </div>
+
+                {/* Health Distribution & KPI Counters */}
+                {crossPageIntelligence && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
+                    <div style={{ padding: '14px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Pages Analyzed</div>
+                      <div style={{ fontSize: '22px', fontWeight: 800, marginTop: '2px' }}>{crossPageIntelligence.totalPages}</div>
+                    </div>
+                    <div style={{ padding: '14px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Duplicate Titles</div>
+                      <div style={{ fontSize: '22px', fontWeight: 800, marginTop: '2px', color: crossPageIntelligence.duplicateTitles?.length > 0 ? '#f87171' : '#34d399' }}>
+                        {crossPageIntelligence.duplicateTitles?.length || 0}
+                      </div>
+                    </div>
+                    <div style={{ padding: '14px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Duplicate Descriptions</div>
+                      <div style={{ fontSize: '22px', fontWeight: 800, marginTop: '2px', color: crossPageIntelligence.duplicateDescriptions?.length > 0 ? '#fde68a' : '#34d399' }}>
+                        {crossPageIntelligence.duplicateDescriptions?.length || 0}
+                      </div>
+                    </div>
+                    <div style={{ padding: '14px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Canonical Conflicts</div>
+                      <div style={{ fontSize: '22px', fontWeight: 800, marginTop: '2px', color: crossPageIntelligence.canonicalConflicts?.length > 0 ? '#f87171' : '#34d399' }}>
+                        {crossPageIntelligence.canonicalConflicts?.length || 0}
+                      </div>
+                    </div>
+                    <div style={{ padding: '14px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Missing Core Tags</div>
+                      <div style={{ fontSize: '22px', fontWeight: 800, marginTop: '2px', color: crossPageIntelligence.missingCoreTags?.length > 0 ? '#f87171' : '#34d399' }}>
+                        {crossPageIntelligence.missingCoreTags?.length || 0}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Sub-Tabs for Categories */}
+                <div style={{ display: 'flex', gap: '4px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
+                  {[
+                    { id: 'duplicate_titles', label: `Duplicate Titles (${crossPageIntelligence?.duplicateTitles?.length || 0})` },
+                    { id: 'duplicate_descriptions', label: `Duplicate Descriptions (${crossPageIntelligence?.duplicateDescriptions?.length || 0})` },
+                    { id: 'canonical_conflicts', label: `Canonical Conflicts (${crossPageIntelligence?.canonicalConflicts?.length || 0})` },
+                    { id: 'missing_tags', label: `Missing Core Tags (${crossPageIntelligence?.missingCoreTags?.length || 0})` },
+                    { id: 'missing_images', label: `Missing Images (${crossPageIntelligence?.missingSocialImages?.length || 0})` },
+                  ].map((tb) => (
+                    <button
+                      key={tb.id}
+                      onClick={() => setActiveCrossPageTab(tb.id as any)}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '12px',
+                        fontWeight: activeCrossPageTab === tb.id ? 700 : 500,
+                        backgroundColor: activeCrossPageTab === tb.id ? 'var(--bg-card)' : 'transparent',
+                        color: activeCrossPageTab === tb.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+                        border: 'none',
+                        borderBottom: activeCrossPageTab === tb.id ? '2px solid var(--accent-blue)' : '2px solid transparent',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {tb.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Category Details Card */}
+                <div style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '20px' }}>
+                  {activeCrossPageTab === 'duplicate_titles' && (
+                    <div>
+                      <h4 style={{ fontSize: '14px', fontWeight: 700, marginBottom: '12px' }}>Duplicate Title Clusters</h4>
+                      {crossPageIntelligence?.duplicateTitles?.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                          {crossPageIntelligence.duplicateTitles.map((item: any, idx: number) => (
+                            <div key={idx} style={{ padding: '12px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '12px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <strong style={{ color: '#f87171' }}>"{item.title}"</strong>
+                                <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#f87171', fontWeight: 700 }}>
+                                  Shared by {item.count} URLs
+                                </span>
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
+                                {item.urls.map((u: string, uIdx: number) => (
+                                  <div key={uIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
+                                    <span style={{ color: 'var(--text-secondary)' }}>• {u}</span>
+                                    <button
+                                      onClick={() => handleInspectAndFixUrl(u)}
+                                      style={{ padding: '2px 8px', fontSize: '10px', backgroundColor: 'var(--accent-blue)', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                                    >
+                                      ⚡ Fix in Studio
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ color: '#34d399', fontSize: '12px' }}>✓ No duplicate titles detected across crawled pages.</div>
+                      )}
+                    </div>
+                  )}
+
+                  {activeCrossPageTab === 'duplicate_descriptions' && (
+                    <div>
+                      <h4 style={{ fontSize: '14px', fontWeight: 700, marginBottom: '12px' }}>Duplicate Meta Description Clusters</h4>
+                      {crossPageIntelligence?.duplicateDescriptions?.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                          {crossPageIntelligence.duplicateDescriptions.map((item: any, idx: number) => (
+                            <div key={idx} style={{ padding: '12px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '12px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <strong style={{ color: '#fde68a' }}>"{item.description}"</strong>
+                                <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', backgroundColor: 'rgba(245, 158, 11, 0.2)', color: '#fde68a', fontWeight: 700 }}>
+                                  Shared by {item.count} URLs
+                                </span>
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
+                                {item.urls.map((u: string, uIdx: number) => (
+                                  <div key={uIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
+                                    <span style={{ color: 'var(--text-secondary)' }}>• {u}</span>
+                                    <button
+                                      onClick={() => handleInspectAndFixUrl(u)}
+                                      style={{ padding: '2px 8px', fontSize: '10px', backgroundColor: 'var(--accent-blue)', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                                    >
+                                      ⚡ Fix in Studio
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ color: '#34d399', fontSize: '12px' }}>✓ No duplicate descriptions detected across crawled pages.</div>
+                      )}
+                    </div>
+                  )}
+
+                  {activeCrossPageTab === 'canonical_conflicts' && (
+                    <div>
+                      <h4 style={{ fontSize: '14px', fontWeight: 700, marginBottom: '12px' }}>Canonical URL Conflicts</h4>
+                      {crossPageIntelligence?.canonicalConflicts?.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {crossPageIntelligence.canonicalConflicts.map((c: any, idx: number) => (
+                            <div key={idx} style={{ padding: '10px 12px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div>
+                                <div><strong>Page:</strong> {c.url}</div>
+                                <div style={{ color: '#f87171', marginTop: '2px', fontSize: '11px' }}>
+                                  Points to: <code>{c.declaredCanonical}</code> ({c.issue})
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => handleInspectAndFixUrl(c.url)}
+                                style={{ padding: '3px 8px', fontSize: '10px', backgroundColor: 'var(--accent-blue)', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                              >
+                                ⚡ Fix in Studio
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ color: '#34d399', fontSize: '12px' }}>✓ No canonical conflicts detected.</div>
+                      )}
+                    </div>
+                  )}
+
+                  {activeCrossPageTab === 'missing_tags' && (
+                    <div>
+                      <h4 style={{ fontSize: '14px', fontWeight: 700, marginBottom: '12px' }}>Pages Missing Core Metadata Tags</h4>
+                      {crossPageIntelligence?.missingCoreTags?.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {crossPageIntelligence.missingCoreTags.map((m: any, idx: number) => (
+                            <div key={idx} style={{ padding: '10px 12px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div>
+                                <div><strong>URL:</strong> {m.url}</div>
+                                <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
+                                  {m.missing.map((tag: string) => (
+                                    <span key={tag} style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#f87171', fontWeight: 600 }}>
+                                      Missing &lt;{tag}&gt;
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => handleInspectAndFixUrl(m.url)}
+                                style={{ padding: '3px 8px', fontSize: '10px', backgroundColor: 'var(--accent-blue)', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                              >
+                                ⚡ Fix in Studio
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ color: '#34d399', fontSize: '12px' }}>✓ All crawled pages possess core title, description, h1, and canonical tags.</div>
+                      )}
+                    </div>
+                  )}
+
+                  {activeCrossPageTab === 'missing_images' && (
+                    <div>
+                      <h4 style={{ fontSize: '14px', fontWeight: 700, marginBottom: '12px' }}>Pages Missing Social Images (og:image)</h4>
+                      {crossPageIntelligence?.missingSocialImages?.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {crossPageIntelligence.missingSocialImages.map((u: string, idx: number) => (
+                            <div key={idx} style={{ padding: '10px 12px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>• {u}</span>
+                              <button
+                                onClick={() => handleInspectAndFixUrl(u)}
+                                style={{ padding: '2px 8px', fontSize: '10px', backgroundColor: 'var(--accent-blue)', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                              >
+                                ⚡ Fix in Studio
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ color: '#34d399', fontSize: '12px' }}>✓ All crawled pages specify an Open Graph social image.</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* SUB-VIEW 3: Studio Workbench & Inspector */}
+            {metaStudioSubView === 'workbench' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {/* SECTION 1: Safe Target URL Inspector & Ingest */}
+                <div style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '8px' }}>1. Target URL & Live Inspection (SSRF-Protected)</div>
               <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <input
                   type="text"
@@ -1259,7 +2193,7 @@ export function App() {
                   style={{ flex: 1, minWidth: '280px', padding: '8px 12px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', boxSizing: 'border-box' }}
                 />
                 <button
-                  onClick={handleInspectUrl}
+                  onClick={() => handleInspectUrl()}
                   disabled={inspectingUrl}
                   style={{ padding: '8px 16px', backgroundColor: 'var(--accent-blue)', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 600, cursor: inspectingUrl ? 'not-allowed' : 'pointer' }}
                 >
@@ -1946,6 +2880,166 @@ export function App() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+            {/* Outcome Measurement Modal */}
+            {outcomeModalProposal && (
+              <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(0,0,0,0.7)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 1000,
+                padding: '20px',
+              }}>
+                <div style={{
+                  backgroundColor: 'var(--bg-card)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '12px',
+                  width: '100%',
+                  maxWidth: '560px',
+                  padding: '24px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '16px',
+                  boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <h3 style={{ fontSize: '16px', fontWeight: 700, margin: 0 }}>📈 Record Measured Metadata Outcome</h3>
+                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                        Quantify impact of approved metadata changes against subsequent search performance.
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setOutcomeModalProposal(null)}
+                      style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '18px' }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div style={{ padding: '10px 12px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '12px' }}>
+                    <div><strong>Page URL:</strong> {outcomeModalProposal.url}</div>
+                    <div style={{ marginTop: '4px', color: '#93c5fd' }}>
+                      <strong>Approved Title:</strong> {outcomeModalProposal.payload?.title || outcomeModalProposal.url}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    {/* Baseline Metrics */}
+                    <div style={{ padding: '12px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px' }}>
+                      <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                        1. Baseline (Pre-Change)
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div>
+                          <label style={{ fontSize: '11px', display: 'block', marginBottom: '2px' }}>Impressions:</label>
+                          <input
+                            type="number"
+                            value={outcomeForm.baselineImpressions}
+                            onChange={(e) => setOutcomeForm({ ...outcomeForm, baselineImpressions: Number(e.target.value) })}
+                            style={{ width: '100%', padding: '6px 8px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', boxSizing: 'border-box' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '11px', display: 'block', marginBottom: '2px' }}>Clicks:</label>
+                          <input
+                            type="number"
+                            value={outcomeForm.baselineClicks}
+                            onChange={(e) => setOutcomeForm({ ...outcomeForm, baselineClicks: Number(e.target.value) })}
+                            style={{ width: '100%', padding: '6px 8px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', boxSizing: 'border-box' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '11px', display: 'block', marginBottom: '2px' }}>Avg Position (Rank):</label>
+                          <input
+                            type="number"
+                            step="0.1"
+                            value={outcomeForm.baselinePosition}
+                            onChange={(e) => setOutcomeForm({ ...outcomeForm, baselinePosition: Number(e.target.value) })}
+                            style={{ width: '100%', padding: '6px 8px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', boxSizing: 'border-box' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Current Metrics */}
+                    <div style={{ padding: '12px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px' }}>
+                      <div style={{ fontSize: '12px', fontWeight: 700, color: '#34d399', marginBottom: '8px' }}>
+                        2. Current (Measured)
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div>
+                          <label style={{ fontSize: '11px', display: 'block', marginBottom: '2px' }}>Impressions:</label>
+                          <input
+                            type="number"
+                            value={outcomeForm.currentImpressions}
+                            onChange={(e) => setOutcomeForm({ ...outcomeForm, currentImpressions: Number(e.target.value) })}
+                            style={{ width: '100%', padding: '6px 8px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', boxSizing: 'border-box' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '11px', display: 'block', marginBottom: '2px' }}>Clicks:</label>
+                          <input
+                            type="number"
+                            value={outcomeForm.currentClicks}
+                            onChange={(e) => setOutcomeForm({ ...outcomeForm, currentClicks: Number(e.target.value) })}
+                            style={{ width: '100%', padding: '6px 8px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', boxSizing: 'border-box' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '11px', display: 'block', marginBottom: '2px' }}>Avg Position (Rank):</label>
+                          <input
+                            type="number"
+                            step="0.1"
+                            value={outcomeForm.currentPosition}
+                            onChange={(e) => setOutcomeForm({ ...outcomeForm, currentPosition: Number(e.target.value) })}
+                            style={{ width: '100%', padding: '6px 8px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', boxSizing: 'border-box' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Calculated Deltas Callout */}
+                  <div style={{ padding: '10px 14px', backgroundColor: 'rgba(52, 211, 153, 0.1)', border: '1px solid rgba(52, 211, 153, 0.3)', borderRadius: '6px', fontSize: '12px' }}>
+                    <div style={{ fontWeight: 700, color: '#34d399', marginBottom: '4px' }}>Calculated Delta:</div>
+                    <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                      <span>Clicks Delta: <strong>{outcomeForm.currentClicks - outcomeForm.baselineClicks >= 0 ? `+${outcomeForm.currentClicks - outcomeForm.baselineClicks}` : outcomeForm.currentClicks - outcomeForm.baselineClicks}</strong></span>
+                      <span>Impressions Delta: <strong>{outcomeForm.currentImpressions - outcomeForm.baselineImpressions >= 0 ? `+${outcomeForm.currentImpressions - outcomeForm.baselineImpressions}` : outcomeForm.currentImpressions - outcomeForm.baselineImpressions}</strong></span>
+                      <span>CTR Delta: <strong>{(
+                        (outcomeForm.currentImpressions > 0 ? (outcomeForm.currentClicks / outcomeForm.currentImpressions) * 100 : 0) -
+                        (outcomeForm.baselineImpressions > 0 ? (outcomeForm.baselineClicks / outcomeForm.baselineImpressions) * 100 : 0)
+                      ).toFixed(2)}%</strong></span>
+                      <span>Position Delta: <strong>{(outcomeForm.baselinePosition - outcomeForm.currentPosition) >= 0 ? `+${(outcomeForm.baselinePosition - outcomeForm.currentPosition).toFixed(1)} ranks` : `${(outcomeForm.baselinePosition - outcomeForm.currentPosition).toFixed(1)} ranks`}</strong></span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                    <button
+                      onClick={() => setOutcomeModalProposal(null)}
+                      style={{ padding: '8px 16px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSaveOutcomeMeasurement}
+                      disabled={savingOutcome}
+                      style={{ padding: '8px 18px', backgroundColor: 'var(--accent-green)', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 700, cursor: savingOutcome ? 'not-allowed' : 'pointer' }}
+                    >
+                      {savingOutcome ? 'Saving Outcome...' : '💾 Save Outcome Measurement'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

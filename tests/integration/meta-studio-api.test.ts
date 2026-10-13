@@ -174,5 +174,122 @@ describe('Meta Tags Studio V3 API Integration', () => {
     const decideJson = (await decideRes.json()) as { success: boolean; message: string };
     expect(decideJson.success).toBe(true);
     expect(decideJson.message).toContain('approved');
+
+    // 4. P0 Tenant Isolation: An unauthorized workspace cannot decide this proposal
+    const rogueWsRes = await fetch(`${baseUrl}/api/v1/meta-studio/proposals/${proposalId}/decide`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspace_id: '00000000-0000-0000-0000-000000000002', // different workspace
+        decision: 'rejected',
+      }),
+    });
+    expect(rogueWsRes.status).toBe(404);
+    const rogueJson = (await rogueWsRes.json()) as { success: boolean; error: { code: string } };
+    expect(rogueJson.error.code).toBe('PROPOSAL_NOT_FOUND');
+
+    // 5. P0 Proposal State Validation: Cannot re-decide an already approved proposal
+    const reDecideRes = await fetch(`${baseUrl}/api/v1/meta-studio/proposals/${proposalId}/decide`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        decision: 'rejected',
+      }),
+    });
+    expect(reDecideRes.status).toBe(409);
+    const reDecideJson = (await reDecideRes.json()) as { success: boolean; error: { code: string } };
+    expect(reDecideJson.error.code).toBe('INVALID_PROPOSAL_STATE');
+  });
+
+  it('P1: blocks approval when schema has ungrounded claims with 422 unless explicit operator override is provided', async () => {
+    const workspaceId = '00000000-0000-0000-0000-000000000001';
+
+    // Create proposal with fabricated product pricing not in observed page
+    const createRes = await fetch(`${baseUrl}/api/v1/meta-studio/proposals`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        url: 'https://chatr.chat/enterprise-tier',
+        proposal_type: 'json_ld',
+        payload: {
+          title: 'CHATR Enterprise Tier',
+          jsonLd: {
+            '@context': 'https://schema.org',
+            '@type': 'Product',
+            name: 'CHATR Enterprise Tier',
+            offers: {
+              '@type': 'Offer',
+              price: '9999.00',
+              priceCurrency: 'USD',
+            },
+          },
+        },
+        observed_payload: {
+          title: 'CHATR Enterprise Tier',
+          h1: 'Enterprise Tier',
+          offers: null,
+          productPrice: null,
+        },
+        notes: 'Testing ungrounded schema rejection',
+      }),
+    });
+
+    const createJson = (await createRes.json()) as { data: { id: string } };
+    const proposalId = createJson.data.id;
+
+    // Try to approve without override -> blocked with 422
+    const blockedRes = await fetch(`${baseUrl}/api/v1/meta-studio/proposals/${proposalId}/decide`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        decision: 'approved',
+        override_grounding_warnings: false,
+      }),
+    });
+    expect(blockedRes.status).toBe(422);
+    const blockedJson = (await blockedRes.json()) as { error: { code: string; message: string } };
+    expect(blockedJson.error.code).toBe('UNGROUNDED_SCHEMA_VIOLATION');
+    expect(blockedJson.error.message).toContain('COMMERCIAL_OFFER_FABRICATION');
+
+    // Approve WITH explicit operator override -> succeeds with 200
+    const overrideRes = await fetch(`${baseUrl}/api/v1/meta-studio/proposals/${proposalId}/decide`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        decision: 'approved',
+        override_grounding_warnings: true,
+        notes: 'Operator verified off-page contract pricing with sales leadership.',
+      }),
+    });
+    expect(overrideRes.status).toBe(200);
+  });
+
+  it('P1 & P2: queries cross-page intelligence, records outcomes, and builds Metadata Intelligence Graph', async () => {
+    const workspaceId = '00000000-0000-0000-0000-000000000001';
+
+    // 1. Cross-page intelligence
+    const intelRes = await fetch(`${baseUrl}/api/v1/meta-studio/cross-page-intelligence?workspace_id=${workspaceId}`);
+    expect(intelRes.status).toBe(200);
+    const intelJson = (await intelRes.json()) as { success: boolean; data: { healthDistribution: any; duplicateTitles: any[] } };
+    expect(intelJson.success).toBe(true);
+    expect(intelJson.data.healthDistribution).toBeDefined();
+
+    // 2. Intelligence Graph linking Crawled URL -> Observed -> Findings -> Evidence -> Proposals -> Outcomes
+    const graphRes = await fetch(`${baseUrl}/api/v1/meta-studio/intelligence-graph?workspace_id=${workspaceId}`);
+    expect(graphRes.status).toBe(200);
+    const graphJson = (await graphRes.json()) as {
+      success: boolean;
+      data: {
+        nodes: Array<{ url: string; pipelineStage: string }>;
+        summary: { totalUrls: number; stageBreakdown: Record<string, number> };
+      };
+    };
+    expect(graphJson.success).toBe(true);
+    expect(Array.isArray(graphJson.data.nodes)).toBe(true);
+    expect(graphJson.data.summary.stageBreakdown).toBeDefined();
   });
 });

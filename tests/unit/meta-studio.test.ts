@@ -129,4 +129,88 @@ describe('Meta Tags Studio V3: Accuracy, Truthfulness, & Governance', () => {
     expect(result.simulatedPreviews.twitterLarge.cardType).toBe('summary_large_image');
     expect(result.twitterCard['twitter:card']).toBe('summary');
   });
+
+  it('P1: validates schema grounding against observed page facts and catches ungrounded claims', () => {
+    // 1. Catches synthetic temporal fabrication
+    const nowIso = new Date().toISOString();
+    const groundingReport1 = MetaStudioService.validateSchemaGrounding(
+      {
+        title: 'Autonomous Messaging',
+        canonical: 'https://chatr.chat/video-tools',
+        jsonLd: {
+          '@context': 'https://schema.org',
+          '@type': 'Article',
+          headline: 'Autonomous Messaging',
+          datePublished: nowIso, // Synthetic timestamp matching now!
+        },
+      },
+      {
+        title: 'Autonomous Messaging',
+        canonicalUrl: 'https://chatr.chat/video-tools',
+        datePublished: null, // Not on page
+      }
+    );
+
+    expect(groundingReport1.isGrounded).toBe(false);
+    expect(groundingReport1.status).toBe('violation');
+    expect(groundingReport1.violations.some((v) => v.groundingRule === 'TEMPORAL_FABRICATION')).toBe(true);
+
+    // 2. Catches ungrounded commercial offers in Product schema
+    const groundingReport2 = MetaStudioService.validateSchemaGrounding(
+      {
+        title: 'CHATR Enterprise Plan',
+        canonical: 'https://chatr.chat/pricing',
+        jsonLd: {
+          '@context': 'https://schema.org',
+          '@type': 'Product',
+          name: 'CHATR Enterprise Plan',
+          offers: {
+            '@type': 'Offer',
+            price: '499.00',
+            priceCurrency: 'USD',
+          },
+        },
+      },
+      {
+        title: 'CHATR Enterprise Plan',
+        canonicalUrl: 'https://chatr.chat/pricing',
+        offers: null,
+        productPrice: null,
+      }
+    );
+
+    expect(groundingReport2.isGrounded).toBe(false);
+    expect(groundingReport2.status).toBe('violation');
+    expect(groundingReport2.violations.some((v) => v.groundingRule === 'COMMERCIAL_OFFER_FABRICATION')).toBe(true);
+
+    // 3. Catches canonical mismatch
+    const groundingReport3 = MetaStudioService.validateSchemaGrounding(
+      {
+        title: 'Page Title',
+        canonical: 'https://chatr.chat/alternate-url',
+      },
+      {
+        title: 'Page Title',
+        canonicalUrl: 'https://chatr.chat/original-url',
+      }
+    );
+
+    expect(groundingReport3.isGrounded).toBe(false);
+    expect(groundingReport3.violations.some((v) => v.groundingRule === 'CANONICAL_MISMATCH')).toBe(true);
+  });
+
+  it('P2: external validation distinguishes local vs external verification', async () => {
+    const validJsonLd = JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      name: 'CHATR',
+      url: 'https://chatr.chat',
+    });
+
+    const result = await MetaStudioService.runExternalValidation(validJsonLd, 'schema');
+    expect(result.conformanceValid).toBe(true);
+    expect(result.validatorSource).toBe('local_strict_conformance');
+    expect(result.externallyVerified).toBe(false);
+    expect(result.validatorNotice).toContain('local');
+  });
 });

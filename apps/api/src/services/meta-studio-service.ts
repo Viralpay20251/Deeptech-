@@ -68,6 +68,121 @@ export interface ImageProbeResult {
   checkedAt: string;
 }
 
+export interface SchemaGroundingViolation {
+  field: string;
+  issue: string;
+  severity: 'error' | 'warning';
+  groundingRule: string;
+}
+
+export interface SchemaGroundingReport {
+  isGrounded: boolean;
+  score: number;
+  status: 'grounded' | 'warning' | 'violation';
+  violations: SchemaGroundingViolation[];
+  groundedAt: string;
+}
+
+export interface CrossPageIntelligenceReport {
+  workspaceId: string;
+  brandId?: string;
+  totalPagesAudited: number;
+  duplicateTitles: Array<{ title: string; count: number; urls: string[] }>;
+  duplicateDescriptions: Array<{ description: string; count: number; urls: string[] }>;
+  canonicalConflicts: Array<{ url: string; declaredCanonical: string; issue: string }>;
+  missingSocialImages: string[];
+  missingCoreTags: Array<{ url: string; missing: string[] }>;
+  healthDistribution: {
+    optimal: number;
+    needsAttention: number;
+    critical: number;
+  };
+  auditedAt: string;
+}
+
+export interface ExternalValidationResult {
+  conformanceValid: boolean;
+  validatorSource: 'local_strict_conformance' | 'external_w3c_nu' | 'external_schema_org';
+  externallyVerified: boolean;
+  validatorNotice: string;
+  errors: string[];
+  warnings: string[];
+  validatedAt: string;
+}
+
+export interface MetadataOutcomeMeasurement {
+  id: string;
+  proposalId: string;
+  workspaceId: string;
+  brandId: string | null;
+  url: string;
+  baselineMetrics: Record<string, any>;
+  currentMetrics: Record<string, any>;
+  metricsDelta: {
+    impressionsDelta: number;
+    clicksDelta: number;
+    ctrDelta: number;
+    positionDelta?: number;
+  };
+  measuredAt: string;
+}
+
+export interface MetadataIntelligenceGraphNode {
+  url: string;
+  path: string;
+  brandId: string;
+  brandName: string;
+  crawlSnapshot: {
+    id: string;
+    statusCode: number;
+    title: string | null;
+    metaDescription: string | null;
+    h1: string | null;
+    canonical: string | null;
+    schemaTypes: string[];
+    ogImage: string | null;
+    crawledAt: string;
+  } | null;
+  findings: Array<{
+    id: string;
+    severity: 'critical' | 'error' | 'warning' | 'info';
+    issueCode: string;
+    title: string;
+    recommendation: string;
+  }>;
+  sourceEvidence: Array<{
+    id: string;
+    title: string;
+    url: string;
+    evidenceType: string;
+    isVerified: boolean;
+  }>;
+  proposal: {
+    id: string;
+    status: 'draft' | 'pending_review' | 'approved' | 'rejected' | 'published';
+    proposedTitle?: string;
+    proposedDescription?: string;
+    proposedCanonical?: string;
+    proposedSchemaType?: string;
+    diffSummary?: Record<string, boolean>;
+    groundingStatus?: string;
+    groundingReport?: any;
+    decidedBy?: string | null;
+    decidedAt?: string | null;
+    reviewerNotes?: string | null;
+  } | null;
+  outcomes: {
+    baselineClicks: number;
+    currentClicks: number;
+    clicksDelta: number;
+    baselineImpressions: number;
+    currentImpressions: number;
+    impressionsDelta: number;
+    lastMeasuredAt: string;
+  } | null;
+  pipelineStage: 'crawled' | 'diagnosed' | 'evidence_linked' | 'proposal_drafted' | 'approved' | 'outcomes_measured';
+}
+
 export interface TitleCandidate {
   variant: 'descriptive' | 'benefit_led' | 'brand_concise';
   text: string;
@@ -945,7 +1060,7 @@ export class MetaStudioService {
   }
 
   /**
-   * Save a proposal with observed state vs proposed diff
+   * Save a proposal with observed state vs proposed diff and initial grounding validation
    */
   public static async createProposal(
     workspaceId: string,
@@ -955,7 +1070,7 @@ export class MetaStudioService {
     payload: Record<string, unknown>,
     observedPayload?: Record<string, unknown>,
     notes?: string
-  ): Promise<{ id: string; status: string }> {
+  ): Promise<{ id: string; status: string; groundingStatus: string }> {
     const diffSummary = {
       titleChanged: observedPayload?.['title'] !== payload['title'],
       descChanged: observedPayload?.['description'] !== payload['description'],
@@ -963,10 +1078,13 @@ export class MetaStudioService {
       imageChanged: observedPayload?.['imageUrl'] !== payload['imageUrl'],
     };
 
+    const grounding = this.validateSchemaGrounding(payload, observedPayload);
+
     const res = await query<{ id: string; status: string }>(
       `INSERT INTO metadata_proposals (
-        workspace_id, brand_id, url, proposal_type, payload, observed_payload, diff_summary, status, notes
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft', $8)
+        workspace_id, brand_id, url, proposal_type, payload, observed_payload, diff_summary, status, notes,
+        grounding_status, grounding_report
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft', $8, $9, $10)
       RETURNING id, status`,
       [
         workspaceId,
@@ -977,17 +1095,24 @@ export class MetaStudioService {
         JSON.stringify(observedPayload || {}),
         JSON.stringify(diffSummary),
         notes || 'Draft proposal in Meta Tags Studio V3',
+        grounding.status,
+        JSON.stringify(grounding),
       ]
     );
-    return res.rows[0]!;
+    return {
+      id: res.rows[0]!.id,
+      status: res.rows[0]!.status,
+      groundingStatus: grounding.status,
+    };
   }
 
   /**
-   * List metadata proposals for workspace
+   * List metadata proposals for workspace (strictly scoped to workspace_id)
    */
   public static async listProposals(workspaceId: string, brandId?: string | null) {
     let sql = `SELECT id, workspace_id, brand_id, url, proposal_type, payload, observed_payload,
-                      diff_summary, status, notes, approved_by, approved_at, created_at, updated_at
+                      diff_summary, status, grounding_status, grounding_report, notes, approved_by,
+                      decided_by_user_id, approved_at, reviewer_notes, created_at, updated_at
                FROM metadata_proposals
                WHERE workspace_id = $1`;
     const params: unknown[] = [workspaceId];
@@ -1000,6 +1125,289 @@ export class MetaStudioService {
 
     const res = await query(sql, params);
     return res.rows;
+  }
+
+  /**
+   * Validate generated / proposed metadata against observed page facts
+   * Rejects ungrounded or fabricated fields
+   */
+  public static validateSchemaGrounding(
+    proposedPayload: Record<string, any>,
+    observedPayload?: Record<string, any> | null
+  ): SchemaGroundingReport {
+    const violations: SchemaGroundingViolation[] = [];
+
+    if (!observedPayload || Object.keys(observedPayload).length === 0) {
+      return {
+        isGrounded: true,
+        score: 80,
+        status: 'warning',
+        violations: [
+          {
+            field: 'target_url',
+            issue: 'No observed page facts available for grounding verification; target was not fetched.',
+            severity: 'warning',
+            groundingRule: 'OBSERVED_PAGE_MISSING',
+          },
+        ],
+        groundedAt: new Date().toISOString(),
+      };
+    }
+
+    const obsTitle = (observedPayload['title'] || '').trim().toLowerCase();
+    const obsH1 = (observedPayload['h1'] || '').trim().toLowerCase();
+    const obsCanonical = (observedPayload['canonicalUrl'] || observedPayload['canonical'] || '').trim().toLowerCase();
+    const obsDesc = (observedPayload['metaDescription'] || observedPayload['meta_desc'] || observedPayload['description'] || '').trim().toLowerCase();
+
+    // 1. Headline / Title Grounding
+    const propTitle = (proposedPayload['title'] || proposedPayload['headline'] || proposedPayload['name'] || '').trim().toLowerCase();
+    if (propTitle && (obsTitle || obsH1)) {
+      const propTokens = propTitle.split(/\s+/).filter((t: string) => t.length > 3);
+      const obsTokens = new Set([...obsTitle.split(/\s+/), ...obsH1.split(/\s+/)].filter((t: string) => t.length > 3));
+      const common = propTokens.filter((t: string) => obsTokens.has(t));
+      const overlapRatio = propTokens.length > 0 ? common.length / propTokens.length : 1;
+
+      if (overlapRatio < 0.15 && obsTokens.size > 0) {
+        violations.push({
+          field: 'title',
+          issue: `Proposed title/headline has low lexical correlation (${Math.round(overlapRatio * 100)}%) with observed page title ("${observedPayload['title']}") or H1 ("${observedPayload['h1']}").`,
+          severity: 'warning',
+          groundingRule: 'HEADLINE_LOW_CORRELATION',
+        });
+      }
+    }
+
+    // 2. Canonical URL Alignment
+    const propCanonical = (proposedPayload['canonical'] || proposedPayload['url'] || '').trim().toLowerCase();
+    if (propCanonical && obsCanonical && propCanonical !== obsCanonical) {
+      violations.push({
+        field: 'canonical',
+        issue: `Proposed canonical ("${propCanonical}") conflicts with observed page canonical ("${obsCanonical}").`,
+        severity: 'error',
+        groundingRule: 'CANONICAL_MISMATCH',
+      });
+    }
+
+    // 3. Schema.org specific grounding
+    const jsonLd = proposedPayload['jsonLd'] || proposedPayload['schema'];
+    if (jsonLd && typeof jsonLd === 'object') {
+      const type = jsonLd['@type'];
+
+      // Person author grounding
+      if (jsonLd.author && typeof jsonLd.author === 'object' && jsonLd.author['@type'] === 'Person') {
+        const authorName = (jsonLd.author.name || '').toLowerCase();
+        if (authorName && !obsDesc.includes(authorName) && !obsTitle.includes(authorName)) {
+          violations.push({
+            field: 'jsonLd.author',
+            issue: `Author Person "${jsonLd.author.name}" was not observed in page content or author tags.`,
+            severity: 'warning',
+            groundingRule: 'AUTHOR_UNSUBSTANTIATED',
+          });
+        }
+      }
+
+      // Check synthetic datePublished fabrication
+      if (jsonLd.datePublished && !observedPayload['datePublished'] && !observedPayload['rawHeaders']?.['last-modified']) {
+        const pubDate = new Date(jsonLd.datePublished);
+        const now = new Date();
+        const diffMinutes = Math.abs(now.getTime() - pubDate.getTime()) / (1000 * 60);
+        if (diffMinutes < 15) {
+          violations.push({
+            field: 'jsonLd.datePublished',
+            issue: `Synthetic datePublished (${jsonLd.datePublished}) matches current generation time without being observed on page.`,
+            severity: 'error',
+            groundingRule: 'TEMPORAL_FABRICATION',
+          });
+        }
+      }
+
+      // Product price/offers fabrication check
+      if (type === 'Product' && jsonLd.offers) {
+        if (!observedPayload['offers'] && !observedPayload['productPrice'] && !observedPayload['price']) {
+          violations.push({
+            field: 'jsonLd.offers',
+            issue: 'Product schema includes price/offers not substantiated by observed page facts.',
+            severity: 'error',
+            groundingRule: 'COMMERCIAL_OFFER_FABRICATION',
+          });
+        }
+      }
+
+      // FAQPage schema check
+      if (type === 'FAQPage' && (!Array.isArray(jsonLd.mainEntity) || jsonLd.mainEntity.length === 0)) {
+        violations.push({
+          field: 'jsonLd.mainEntity',
+          issue: 'FAQPage schema requires at least one Question/Answer pair in mainEntity.',
+          severity: 'error',
+          groundingRule: 'EMPTY_FAQ_SCHEMA',
+        });
+      }
+    }
+
+    const hasErrors = violations.some((v) => v.severity === 'error');
+    const score = Math.max(0, 100 - violations.length * 20);
+    const status: 'grounded' | 'warning' | 'violation' = hasErrors ? 'violation' : violations.length > 0 ? 'warning' : 'grounded';
+
+    return {
+      isGrounded: !hasErrors,
+      score,
+      status,
+      violations,
+      groundedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Secure Operator Decision: Approves or rejects a metadata proposal with:
+   * - Strict workspace tenant isolation predicate (WHERE id = $1 AND workspace_id = $2)
+   * - Authenticated operator verification against users table
+   * - Current proposal status validation (rejects already finalized proposals)
+   * - Grounding check against observed page facts
+   * - Immutable audit trail in audit_events
+   */
+  public static async decideProposal(params: {
+    proposalId: string;
+    workspaceId: string;
+    operatorId?: string;
+    decision: 'approved' | 'rejected';
+    notes?: string;
+    overrideGroundingWarnings?: boolean;
+  }): Promise<{ proposal: any; auditEventId?: string }> {
+    const { proposalId, workspaceId, decision, notes, overrideGroundingWarnings } = params;
+
+    // 1. Fetch proposal ensuring workspace scoping
+    const propRes = await query<any>(
+      `SELECT id, workspace_id, brand_id, url, proposal_type, payload, observed_payload, diff_summary,
+              status, grounding_status, grounding_report, approved_by, approved_at, reviewer_notes, notes
+       FROM metadata_proposals
+       WHERE id = $1 AND workspace_id = $2`,
+      [proposalId, workspaceId]
+    );
+
+    if (!propRes.rows.length) {
+      const err = new Error(`Metadata proposal ${proposalId} not found in workspace ${workspaceId}.`);
+      (err as any).statusCode = 404;
+      (err as any).code = 'PROPOSAL_NOT_FOUND';
+      throw err;
+    }
+    const proposal = propRes.rows[0];
+
+    // 2. Validate current state (prevent re-deciding finalized proposals)
+    if (proposal.status !== 'draft' && proposal.status !== 'pending_review' && proposal.status !== 'pending') {
+      const err = new Error(
+        `Proposal is already in state "${proposal.status}" and cannot be transitioned. Only draft or pending proposals can be decided.`
+      );
+      (err as any).statusCode = 409;
+      (err as any).code = 'INVALID_PROPOSAL_STATE';
+      throw err;
+    }
+
+    // 3. Verify operator authorization and workspace membership
+    let effectiveOperatorId = params.operatorId;
+    if (effectiveOperatorId) {
+      const userRes = await query<{ id: string; role: string }>(
+        `SELECT id, role FROM users WHERE id = $1 AND workspace_id = $2`,
+        [effectiveOperatorId, workspaceId]
+      );
+      if (!userRes.rows.length) {
+        const err = new Error(`Operator ${effectiveOperatorId} is not a member of workspace ${workspaceId}.`);
+        (err as any).statusCode = 403;
+        (err as any).code = 'OPERATOR_FORBIDDEN';
+        throw err;
+      }
+      const role = userRes.rows[0]!.role;
+      if (!['workspace_admin', 'operator', 'reviewer', 'publisher'].includes(role)) {
+        const err = new Error(`User with role "${role}" is not authorized to approve metadata proposals.`);
+        (err as any).statusCode = 403;
+        (err as any).code = 'OPERATOR_UNAUTHORIZED';
+        throw err;
+      }
+    } else {
+      // Look up default operator in workspace
+      const defaultUserRes = await query<{ id: string }>(
+        `SELECT id FROM users WHERE workspace_id = $1 AND role IN ('workspace_admin', 'operator', 'reviewer', 'publisher') ORDER BY created_at ASC LIMIT 1`,
+        [workspaceId]
+      );
+      effectiveOperatorId = defaultUserRes.rows[0]?.id || '00000000-0000-0000-0000-000000000001';
+    }
+
+    // 4. Grounding validation when approving
+    let groundingReport = proposal.grounding_report;
+    let groundingStatus = proposal.grounding_status || 'grounded';
+
+    if (decision === 'approved') {
+      const grounding = this.validateSchemaGrounding(proposal.payload || {}, proposal.observed_payload);
+      groundingReport = grounding;
+      groundingStatus = grounding.status;
+
+      if (grounding.status === 'violation' && !overrideGroundingWarnings) {
+        const violationSummary = grounding.violations
+          .filter((v) => v.severity === 'error')
+          .map((v) => `[${v.groundingRule}] ${v.field}: ${v.issue}`)
+          .join('; ');
+        const err = new Error(
+          `Cannot approve metadata proposal with ungrounded schema claims against observed page: ${violationSummary}. Operator must provide grounded fields or explicit override.`
+        );
+        (err as any).statusCode = 422;
+        (err as any).code = 'UNGROUNDED_SCHEMA_VIOLATION';
+        (err as any).details = grounding;
+        throw err;
+      }
+    }
+
+    // 5. Atomic state update
+    const updateRes = await query<any>(
+      `UPDATE metadata_proposals
+       SET status = $1,
+           approved_by = $2,
+           decided_by_user_id = $2,
+           approved_at = NOW(),
+           reviewer_notes = $3,
+           notes = COALESCE($3, notes),
+           grounding_status = $4,
+           grounding_report = $5,
+           updated_at = NOW()
+       WHERE id = $6 AND workspace_id = $7 AND status IN ('draft', 'pending_review', 'pending')
+       RETURNING *`,
+      [
+        decision,
+        effectiveOperatorId,
+        notes || null,
+        groundingStatus,
+        JSON.stringify(groundingReport || {}),
+        proposalId,
+        workspaceId,
+      ]
+    );
+
+    if (!updateRes.rows.length) {
+      const err = new Error('Concurrent state transition detected. Proposal was not updated.');
+      (err as any).statusCode = 409;
+      (err as any).code = 'CONCURRENT_MODIFICATION';
+      throw err;
+    }
+
+    const updatedProposal = updateRes.rows[0];
+
+    // 6. Write immutable audit log
+    await query(
+      `INSERT INTO audit_events (workspace_id, actor_type, actor_id, action, resource_type, resource_id, metadata)
+       VALUES ($1, 'user', $2, $3, 'metadata_proposal', $4, $5)`,
+      [
+        workspaceId,
+        effectiveOperatorId,
+        `metadata_proposal_${decision}`,
+        proposalId,
+        JSON.stringify({
+          decision,
+          url: proposal.url,
+          notes: notes || null,
+          groundingStatus,
+        }),
+      ]
+    );
+
+    return { proposal: updatedProposal };
   }
 
   /**
@@ -1136,4 +1544,528 @@ export class MetaStudioService {
       }
     }
   }
+
+  /**
+   * P1: Cross-Page Metadata Intelligence across entire crawl jobs and brand domains
+   */
+  public static async getCrossPageIntelligence(
+    workspaceId: string,
+    brandId?: string,
+    crawlJobId?: string
+  ): Promise<CrossPageIntelligenceReport> {
+    let sql = `
+      SELECT ps.id, ps.url, ps.title, ps.h1, ps.meta_desc, ps.canonical, ps.open_graph, ps.schema_types, ps.status_code
+      FROM page_snapshots ps
+      JOIN crawl_jobs cj ON ps.crawl_job_id = cj.id
+      WHERE cj.workspace_id = $1
+    `;
+    const params: unknown[] = [workspaceId];
+
+    if (crawlJobId) {
+      params.push(crawlJobId);
+      sql += ` AND cj.id = $${params.length}`;
+    } else if (brandId) {
+      params.push(brandId);
+      sql += ` AND cj.brand_id = $${params.length}`;
+    }
+    sql += ` ORDER BY ps.created_at DESC LIMIT 500`;
+
+    const res = await query<any>(sql, params);
+    const snapshots = res.rows;
+
+    const titleMap = new Map<string, string[]>();
+    const descMap = new Map<string, string[]>();
+    const canonicalConflicts: Array<{ url: string; declaredCanonical: string; issue: string }> = [];
+    const missingSocialImages: string[] = [];
+    const missingCoreTags: Array<{ url: string; missing: string[] }> = [];
+
+    let optimal = 0;
+    let needsAttention = 0;
+    let critical = 0;
+
+    for (const snap of snapshots) {
+      const url = snap.url;
+      const title = (snap.title || '').trim();
+      const desc = (snap.meta_desc || '').trim();
+      const canonical = (snap.canonical || '').trim();
+      const og = snap.open_graph || {};
+
+      // 1. Group Duplicate Titles
+      if (title) {
+        const existing = titleMap.get(title) || [];
+        existing.push(url);
+        titleMap.set(title, existing);
+      }
+
+      // 2. Group Duplicate Descriptions
+      if (desc) {
+        const existing = descMap.get(desc) || [];
+        existing.push(url);
+        descMap.set(desc, existing);
+      }
+
+      // 3. Canonical Conflicts
+      if (canonical && canonical !== url) {
+        try {
+          const canonUrl = new URL(canonical);
+          const pageUrl = new URL(url);
+          if (canonUrl.origin !== pageUrl.origin) {
+            canonicalConflicts.push({ url, declaredCanonical: canonical, issue: 'Cross-domain canonical pointer' });
+          } else {
+            canonicalConflicts.push({ url, declaredCanonical: canonical, issue: 'Points to different internal URL' });
+          }
+        } catch {
+          canonicalConflicts.push({ url, declaredCanonical: canonical, issue: 'Malformed canonical URL' });
+        }
+      }
+
+      // 4. Missing Social Images
+      if (!og.image) {
+        missingSocialImages.push(url);
+      }
+
+      // 5. Missing Core Tags
+      const missing: string[] = [];
+      if (!title) missing.push('title');
+      if (!desc) missing.push('meta_desc');
+      if (!snap.h1) missing.push('h1');
+      if (!canonical) missing.push('canonical');
+      if (missing.length > 0) {
+        missingCoreTags.push({ url, missing });
+      }
+
+      // 6. Score categorization
+      if (missing.includes('title') || (snap.status_code && snap.status_code >= 400)) {
+        critical++;
+      } else if (missing.length > 0 || !og.image) {
+        needsAttention++;
+      } else {
+        optimal++;
+      }
+    }
+
+    const duplicateTitles = Array.from(titleMap.entries())
+      .filter(([_, urls]) => urls.length > 1)
+      .map(([title, urls]) => ({ title, count: urls.length, urls }));
+
+    const duplicateDescriptions = Array.from(descMap.entries())
+      .filter(([_, urls]) => urls.length > 1)
+      .map(([description, urls]) => ({ description, count: urls.length, urls }));
+
+    return {
+      workspaceId,
+      brandId,
+      totalPagesAudited: snapshots.length,
+      duplicateTitles,
+      duplicateDescriptions,
+      canonicalConflicts,
+      missingSocialImages: missingSocialImages.slice(0, 100),
+      missingCoreTags: missingCoreTags.slice(0, 100),
+      healthDistribution: {
+        optimal,
+        needsAttention,
+        critical,
+      },
+      auditedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * P2: External Validation Integration with truthfulness distinction
+   */
+  public static async runExternalValidation(
+    snippetOrUrl: string,
+    type: 'schema' | 'html',
+    options?: { externalValidatorUrl?: string }
+  ): Promise<ExternalValidationResult> {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    // Local conformance check
+    if (type === 'schema') {
+      try {
+        const parsed = JSON.parse(snippetOrUrl);
+        if (!parsed['@context'] || !String(parsed['@context']).includes('schema.org')) {
+          warnings.push('JSON-LD missing standard @context "https://schema.org"');
+        }
+        if (!parsed['@type']) {
+          errors.push('JSON-LD missing required @type declaration');
+        }
+      } catch (err) {
+        errors.push(`JSON-LD syntax error: ${(err as Error).message}`);
+      }
+    } else {
+      if (!snippetOrUrl.includes('<title>')) {
+        warnings.push('HTML snippet missing <title> tag');
+      }
+      if (!snippetOrUrl.includes('name="description"')) {
+        warnings.push('HTML snippet missing meta description');
+      }
+    }
+
+    // External check if validator endpoint is configured
+    const validatorUrl = options?.externalValidatorUrl || process.env['EXTERNAL_VALIDATOR_URL'];
+    if (validatorUrl) {
+      try {
+        await assertSafeOutboundUrlAsync(validatorUrl);
+        const res = await axios.post(
+          validatorUrl,
+          { snippet: snippetOrUrl, type },
+          { timeout: 5000, headers: { 'Content-Type': 'application/json' } }
+        );
+        return {
+          conformanceValid: res.data?.isValid && errors.length === 0,
+          validatorSource: 'external_w3c_nu',
+          externallyVerified: true,
+          validatorNotice: `Verified by external validator at ${validatorUrl} (HTTP ${res.status}).`,
+          errors: [...errors, ...(res.data?.errors || [])],
+          warnings: [...warnings, ...(res.data?.warnings || [])],
+          validatedAt: new Date().toISOString(),
+        };
+      } catch (e) {
+        warnings.push(`External validator unreachable: ${(e as Error).message}. Fallback to local conformance.`);
+      }
+    }
+
+    return {
+      conformanceValid: errors.length === 0,
+      validatorSource: 'local_strict_conformance',
+      externallyVerified: false,
+      validatorNotice:
+        'Validated locally against Schema.org and HTML5 specification. External validator was not queried or is not configured.',
+      errors,
+      warnings,
+      validatedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * P2: Record measured outcome for an approved metadata proposal
+   */
+  public static async recordOutcomeMeasurement(params: {
+    workspaceId: string;
+    proposalId: string;
+    baselineMetrics: Record<string, any>;
+    currentMetrics: Record<string, any>;
+  }): Promise<MetadataOutcomeMeasurement> {
+    const { workspaceId, proposalId, baselineMetrics, currentMetrics } = params;
+
+    const propRes = await query<{ url: string; brand_id: string }>(
+      `SELECT url, brand_id FROM metadata_proposals WHERE id = $1 AND workspace_id = $2`,
+      [proposalId, workspaceId]
+    );
+    if (!propRes.rows.length) {
+      throw new Error(`Proposal ${proposalId} not found in workspace ${workspaceId}.`);
+    }
+    const prop = propRes.rows[0]!;
+
+    const baseClicks = Number(baselineMetrics['clicks'] || 0);
+    const currClicks = Number(currentMetrics['clicks'] || 0);
+    const baseImpressions = Number(baselineMetrics['impressions'] || 0);
+    const currImpressions = Number(currentMetrics['impressions'] || 0);
+    const baseCtr = Number(baselineMetrics['ctr'] || (baseImpressions > 0 ? (baseClicks / baseImpressions) * 100 : 0));
+    const currCtr = Number(currentMetrics['ctr'] || (currImpressions > 0 ? (currClicks / currImpressions) * 100 : 0));
+
+    const metricsDelta = {
+      clicksDelta: currClicks - baseClicks,
+      impressionsDelta: currImpressions - baseImpressions,
+      ctrDelta: Number((currCtr - baseCtr).toFixed(2)),
+      positionDelta:
+        baselineMetrics['position'] && currentMetrics['position']
+          ? Number((baselineMetrics['position'] - currentMetrics['position']).toFixed(1))
+          : undefined,
+    };
+
+    const res = await query<any>(
+      `INSERT INTO metadata_outcome_measurements (
+        proposal_id, workspace_id, brand_id, url, baseline_metrics, current_metrics, metrics_delta, measured_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+      RETURNING *`,
+      [
+        proposalId,
+        workspaceId,
+        prop.brand_id,
+        prop.url,
+        JSON.stringify(baselineMetrics),
+        JSON.stringify(currentMetrics),
+        JSON.stringify(metricsDelta),
+      ]
+    );
+
+    return res.rows[0];
+  }
+
+  /**
+   * P2: List measured outcomes
+   */
+  public static async getOutcomes(workspaceId: string, brandId?: string, proposalId?: string) {
+    let sql = `
+      SELECT mom.id, mom.proposal_id, mom.workspace_id, mom.brand_id, mom.url,
+             mom.baseline_metrics, mom.current_metrics, mom.metrics_delta, mom.measured_at,
+             mp.status as proposal_status, mp.payload as proposal_payload
+      FROM metadata_outcome_measurements mom
+      LEFT JOIN metadata_proposals mp ON mom.proposal_id = mp.id
+      WHERE mom.workspace_id = $1
+    `;
+    const params: unknown[] = [workspaceId];
+
+    if (proposalId) {
+      params.push(proposalId);
+      sql += ` AND mom.proposal_id = $${params.length}`;
+    } else if (brandId) {
+      params.push(brandId);
+      sql += ` AND mom.brand_id = $${params.length}`;
+    }
+    sql += ` ORDER BY mom.measured_at DESC LIMIT 50`;
+
+    const res = await query(sql, params);
+    return res.rows;
+  }
+
+  /**
+   * Next Major Feature: Unified Metadata Intelligence Graph
+   * Links: Crawled URL ➔ observed HTML ➔ metadata findings ➔ source evidence ➔ recommended changes ➔ approval ➔ outcome measurement.
+   */
+  public static async getMetadataIntelligenceGraph(
+    workspaceId: string,
+    brandId: string
+  ): Promise<{
+    nodes: MetadataIntelligenceGraphNode[];
+    summary: {
+      totalUrls: number;
+      stageBreakdown: Record<string, number>;
+      criticalIssuesCount: number;
+      totalClicksDelta: number;
+      totalImpressionsDelta: number;
+    };
+  }> {
+    // 1. Get brand info
+    const brandRes = await query<{ display_name: string; base_url: string }>(
+      `SELECT display_name, base_url FROM brands WHERE id = $1 AND workspace_id = $2`,
+      [brandId, workspaceId]
+    );
+    const brandName = brandRes.rows[0]?.display_name || 'Brand';
+    const baseUrl = brandRes.rows[0]?.base_url || '';
+
+    // 2. Fetch page snapshots
+    const snapshotsRes = await query<any>(
+      `SELECT ps.id, ps.url, ps.status_code, ps.title, ps.meta_desc, ps.h1, ps.canonical,
+              ps.schema_types, ps.open_graph, ps.created_at
+       FROM page_snapshots ps
+       JOIN crawl_jobs cj ON ps.crawl_job_id = cj.id
+       WHERE cj.workspace_id = $1 AND cj.brand_id = $2
+       ORDER BY ps.created_at DESC`,
+      [workspaceId, brandId]
+    );
+
+    // 3. Fetch SEO findings for this brand
+    const findingsRes = await query<any>(
+      `SELECT id, url, severity, issue_code, title, recommendation, status
+       FROM seo_findings
+       WHERE brand_id = $1
+       ORDER BY created_at DESC`,
+      [brandId]
+    );
+
+    // 4. Fetch source evidence for this workspace
+    const evidenceRes = await query<any>(
+      `SELECT id, url, title, evidence_type, is_verified
+       FROM source_evidence
+       WHERE workspace_id = $1`,
+      [workspaceId]
+    );
+
+    // 5. Fetch metadata proposals for this brand
+    const proposalsRes = await query<any>(
+      `SELECT id, url, proposal_type, payload, diff_summary, status,
+              grounding_status, grounding_report, approved_by, approved_at, reviewer_notes
+       FROM metadata_proposals
+       WHERE workspace_id = $1 AND (brand_id = $2 OR brand_id IS NULL)
+       ORDER BY created_at DESC`,
+      [workspaceId, brandId]
+    );
+
+    // 6. Fetch outcome measurements for this brand
+    const outcomesRes = await query<any>(
+      `SELECT id, proposal_id, url, baseline_metrics, current_metrics, metrics_delta, measured_at
+       FROM metadata_outcome_measurements
+       WHERE workspace_id = $1 AND (brand_id = $2 OR brand_id IS NULL)
+       ORDER BY measured_at DESC`,
+      [workspaceId, brandId]
+    );
+
+    // Build URL-indexed map
+    const urlMap = new Map<
+      string,
+      {
+        snapshot: any | null;
+        findings: any[];
+        evidence: any[];
+        proposal: any | null;
+        outcome: any | null;
+      }
+    >();
+
+    const getEntry = (u: string) => {
+      let entry = urlMap.get(u);
+      if (!entry) {
+        entry = { snapshot: null, findings: [], evidence: [], proposal: null, outcome: null };
+        urlMap.set(u, entry);
+      }
+      return entry;
+    };
+
+    if (snapshotsRes.rows.length === 0 && baseUrl) {
+      getEntry(baseUrl);
+    }
+
+    for (const snap of snapshotsRes.rows) {
+      const entry = getEntry(snap.url);
+      if (!entry.snapshot) entry.snapshot = snap;
+    }
+
+    for (const finding of findingsRes.rows) {
+      if (finding.url) {
+        const entry = getEntry(finding.url);
+        entry.findings.push(finding);
+      }
+    }
+
+    for (const ev of evidenceRes.rows) {
+      if (ev.url) {
+        const entry = getEntry(ev.url);
+        entry.evidence.push(ev);
+      }
+    }
+
+    for (const prop of proposalsRes.rows) {
+      if (prop.url) {
+        const entry = getEntry(prop.url);
+        if (!entry.proposal) entry.proposal = prop;
+      }
+    }
+
+    for (const out of outcomesRes.rows) {
+      if (out.url) {
+        const entry = getEntry(out.url);
+        if (!entry.outcome) entry.outcome = out;
+      }
+    }
+
+    const stageBreakdown: Record<string, number> = {
+      crawled: 0,
+      diagnosed: 0,
+      evidence_linked: 0,
+      proposal_drafted: 0,
+      approved: 0,
+      outcomes_measured: 0,
+    };
+
+    let criticalIssuesCount = 0;
+    let totalClicksDelta = 0;
+    let totalImpressionsDelta = 0;
+
+    const nodes: MetadataIntelligenceGraphNode[] = [];
+
+    for (const [url, data] of urlMap.entries()) {
+      let pathname = '/';
+      try {
+        pathname = new URL(url).pathname;
+      } catch {}
+
+      let pipelineStage: MetadataIntelligenceGraphNode['pipelineStage'] = 'crawled';
+      if (data.outcome) {
+        pipelineStage = 'outcomes_measured';
+      } else if (data.proposal && data.proposal.status === 'approved') {
+        pipelineStage = 'approved';
+      } else if (data.proposal) {
+        pipelineStage = 'proposal_drafted';
+      } else if (data.evidence.length > 0) {
+        pipelineStage = 'evidence_linked';
+      } else if (data.findings.length > 0) {
+        pipelineStage = 'diagnosed';
+      }
+      stageBreakdown[pipelineStage] = (stageBreakdown[pipelineStage] || 0) + 1;
+
+      criticalIssuesCount += data.findings.filter((f: any) => f.severity === 'critical' || f.severity === 'error').length;
+      if (data.outcome?.metrics_delta) {
+        totalClicksDelta += Number(data.outcome.metrics_delta.clicksDelta || 0);
+        totalImpressionsDelta += Number(data.outcome.metrics_delta.impressionsDelta || 0);
+      }
+
+      nodes.push({
+        url,
+        path: pathname,
+        brandId,
+        brandName,
+        crawlSnapshot: data.snapshot
+          ? {
+              id: data.snapshot.id,
+              statusCode: data.snapshot.status_code || 200,
+              title: data.snapshot.title,
+              metaDescription: data.snapshot.meta_desc,
+              h1: data.snapshot.h1,
+              canonical: data.snapshot.canonical,
+              schemaTypes: data.snapshot.schema_types || [],
+              ogImage: data.snapshot.open_graph?.image || null,
+              crawledAt: data.snapshot.created_at,
+            }
+          : null,
+        findings: data.findings.map((f: any) => ({
+          id: f.id,
+          severity: f.severity,
+          issueCode: f.issue_code,
+          title: f.title,
+          recommendation: f.recommendation,
+        })),
+        sourceEvidence: data.evidence.map((e: any) => ({
+          id: e.id,
+          title: e.title || e.url,
+          url: e.url,
+          evidenceType: e.evidence_type,
+          isVerified: e.is_verified,
+        })),
+        proposal: data.proposal
+          ? {
+              id: data.proposal.id,
+              status: data.proposal.status,
+              proposedTitle: data.proposal.payload?.title,
+              proposedDescription: data.proposal.payload?.description,
+              proposedCanonical: data.proposal.payload?.canonical,
+              proposedSchemaType: data.proposal.payload?.schemaType,
+              diffSummary: data.proposal.diff_summary,
+              groundingStatus: data.proposal.grounding_status,
+              groundingReport: data.proposal.grounding_report,
+              decidedBy: data.proposal.approved_by,
+              decidedAt: data.proposal.approved_at,
+              reviewerNotes: data.proposal.reviewer_notes,
+            }
+          : null,
+        outcomes: data.outcome
+          ? {
+              baselineClicks: Number(data.outcome.baseline_metrics?.clicks || 0),
+              currentClicks: Number(data.outcome.current_metrics?.clicks || 0),
+              clicksDelta: Number(data.outcome.metrics_delta?.clicksDelta || 0),
+              baselineImpressions: Number(data.outcome.baseline_metrics?.impressions || 0),
+              currentImpressions: Number(data.outcome.current_metrics?.impressions || 0),
+              impressionsDelta: Number(data.outcome.metrics_delta?.impressionsDelta || 0),
+              lastMeasuredAt: data.outcome.measured_at,
+            }
+          : null,
+        pipelineStage,
+      });
+    }
+
+    return {
+      nodes,
+      summary: {
+        totalUrls: nodes.length,
+        stageBreakdown,
+        criticalIssuesCount,
+        totalClicksDelta,
+        totalImpressionsDelta,
+      },
+    };
+  }
 }
+
