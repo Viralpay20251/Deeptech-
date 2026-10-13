@@ -11,11 +11,11 @@ export const authGoogleRouter = Router();
 /**
  * Initiate Google OAuth Flow: GET /api/v1/auth/google/authorize
  */
-authGoogleRouter.get('/authorize', (req: Request, res: Response) => {
+authGoogleRouter.get('/authorize', async (req: Request, res: Response) => {
   const workspaceId = (req.query['workspace_id'] as string) ?? '00000000-0000-0000-0000-000000000001';
 
   try {
-    const authUrl = GoogleAuthService.getAuthorizationUrl(workspaceId);
+    const authUrl = await GoogleAuthService.getAuthorizationUrl(workspaceId);
     if (req.query['redirect'] === 'true') {
       res.redirect(authUrl);
       return;
@@ -31,6 +31,8 @@ authGoogleRouter.get('/authorize', (req: Request, res: Response) => {
 
 /**
  * Handle Google OAuth Callback: GET /api/v1/auth/google/callback
+ * STRICT SECURITY: Validates HMAC-SHA256 signature and atomically consumes single-use nonce.
+ * Zero fallback to default workspace!
  */
 authGoogleRouter.get('/callback', async (req: Request, res: Response) => {
   const code = req.query['code'] as string | undefined;
@@ -41,21 +43,20 @@ authGoogleRouter.get('/callback', async (req: Request, res: Response) => {
     return;
   }
 
-  let workspaceId = '00000000-0000-0000-0000-000000000001';
-  if (stateRaw) {
-    try {
-      const decoded = JSON.parse(Buffer.from(stateRaw, 'base64url').toString('utf8'));
-      if (decoded.workspaceId) workspaceId = decoded.workspaceId;
-    } catch {
-      // Use default workspaceId if state decode fails
-    }
+  if (!stateRaw) {
+    res.status(403).send('OAuth callback error: Missing required state parameter (CSRF protection).');
+    return;
   }
 
   try {
-    await GoogleAuthService.exchangeCodeForTokens(code, workspaceId);
+    // 1. Strictly verify HMAC signature, expiration, and consume single-use state nonce
+    const verified = await GoogleAuthService.verifyAndConsumeState(stateRaw);
+
+    // 2. Exchange code for tokens strictly bound to verified workspace and redirectUri
+    await GoogleAuthService.exchangeCodeForTokens(code, verified.workspaceId, verified.redirectUri);
     res.redirect('/?oauth=google_success');
   } catch (err) {
-    res.status(500).send(`OAuth token exchange failed: ${(err as Error).message}`);
+    res.status(403).send(`OAuth security verification failed: ${(err as Error).message}`);
   }
 });
 

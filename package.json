@@ -20,8 +20,8 @@
     "test:e2e": "npm run test:e2e --workspace=apps/api",
     "db:migrate": "npm run db:migrate --workspace=apps/api",
     "db:seed:dev": "npm run db:seed:dev --workspace=apps/api",
-    "db:rollback": "npm run db:rollback --workspace=apps/api",
-    "safety:check": "node scripts/safety-check.js"
+    "safety:check": "node scripts/safety-check.js",
+    "test:ollama": "tsx scripts/test-ollama.ts"
   },
   "engines": {
     "node": ">=20.0.0",

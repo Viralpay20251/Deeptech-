@@ -7,6 +7,7 @@
  * - Quota, revocation, and honest permission handling
  */
 
+import crypto from 'crypto';
 import axios from 'axios';
 import { query } from '../lib/db.js';
 import { env } from '../lib/env.js';
@@ -31,23 +32,40 @@ export class GoogleAuthService {
   ];
 
   /**
-   * Generates the Google OAuth 2.0 authorization URL
+   * Generates a cryptographically signed, single-use Google OAuth 2.0 authorization URL
    */
-  public static getAuthorizationUrl(workspaceId: string, stateExtra?: string): string {
+  public static async getAuthorizationUrl(workspaceId: string, customRedirectUri?: string): Promise<string> {
     const clientId = env.GOOGLE_CLIENT_ID;
-    const redirectUri = env.GOOGLE_REDIRECT_URI || `${env.PUBLIC_PUBLISHING_DOMAIN}/api/v1/auth/google/callback`;
+    const redirectUri = customRedirectUri || env.GOOGLE_REDIRECT_URI || `${env.PUBLIC_PUBLISHING_DOMAIN}/api/v1/auth/google/callback`;
 
     if (!clientId) {
       throw new Error('GOOGLE_CLIENT_ID is not configured in environment or secrets manager.');
     }
 
-    const state = Buffer.from(
-      JSON.stringify({
-        workspaceId,
-        extra: stateExtra ?? '',
-        timestamp: Date.now(),
-      })
-    ).toString('base64url');
+    // Verify workspace exists
+    const wsRes = await query<{ id: string }>(`SELECT id FROM workspaces WHERE id = $1`, [workspaceId]);
+    if (wsRes.rows.length === 0) {
+      throw new Error(`Invalid workspace ID: ${workspaceId}`);
+    }
+
+    // Generate 32-byte cryptographic nonce
+    const nonce = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minute expiry
+
+    // Save single-use state nonce to database
+    await query(
+      `INSERT INTO oauth_states (nonce, workspace_id, redirect_uri, expires_at)
+       VALUES ($1, $2, $3, $4)`,
+      [nonce, workspaceId, redirectUri, expiresAt.toISOString()]
+    );
+
+    // Create HMAC signature over payload
+    const payloadStr = JSON.stringify({ nonce, workspaceId, expiresAt: expiresAt.getTime(), redirectUri });
+    const hmac = crypto.createHmac('sha256', env.JWT_SECRET);
+    hmac.update(payloadStr);
+    const signature = hmac.digest('hex');
+
+    const stateToken = Buffer.from(JSON.stringify({ p: payloadStr, s: signature })).toString('base64url');
 
     const params = new URLSearchParams({
       client_id: clientId,
@@ -56,10 +74,71 @@ export class GoogleAuthService {
       scope: this.REQUIRED_SCOPES.join(' '),
       access_type: 'offline', // Requests refresh_token
       prompt: 'consent',       // Forces refresh_token issuance
-      state,
+      state: stateToken,
     });
 
     return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+  }
+
+  /**
+   * Verifies HMAC signature, validates expiration, and atomically consumes single-use state nonce.
+   * Strictly enforces workspace isolation and eliminates CSRF replay.
+   */
+  public static async verifyAndConsumeState(stateRaw: string): Promise<{ workspaceId: string; redirectUri: string }> {
+    if (!stateRaw) {
+      throw new Error('Missing OAuth state parameter.');
+    }
+
+    let parsed: { p: string; s: string };
+    try {
+      parsed = JSON.parse(Buffer.from(stateRaw, 'base64url').toString('utf8'));
+    } catch {
+      throw new Error('Malformed OAuth state parameter encoding.');
+    }
+
+    if (!parsed.p || !parsed.s) {
+      throw new Error('Invalid OAuth state structure.');
+    }
+
+    // Verify HMAC signature with timing-safe comparison
+    const hmac = crypto.createHmac('sha256', env.JWT_SECRET);
+    hmac.update(parsed.p);
+    const expectedSig = hmac.digest('hex');
+
+    const sigBuf = Buffer.from(parsed.s, 'hex');
+    const expectedBuf = Buffer.from(expectedSig, 'hex');
+
+    if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
+      throw new Error('OAuth state signature mismatch: CSRF forgery attempt detected.');
+    }
+
+    let payload: { nonce: string; workspaceId: string; expiresAt: number; redirectUri: string };
+    try {
+      payload = JSON.parse(parsed.p);
+    } catch {
+      throw new Error('Malformed OAuth state payload.');
+    }
+
+    if (Date.now() > payload.expiresAt) {
+      throw new Error('OAuth state token has expired (exceeded 10-minute window).');
+    }
+
+    // Atomically consume nonce from database (prevents replay attacks)
+    const consumeRes = await query<{ nonce: string; workspace_id: string; redirect_uri: string }>(
+      `DELETE FROM oauth_states
+       WHERE nonce = $1 AND workspace_id = $2 AND expires_at > NOW()
+       RETURNING nonce, workspace_id, redirect_uri`,
+      [payload.nonce, payload.workspaceId]
+    );
+
+    if (consumeRes.rows.length === 0) {
+      throw new Error('OAuth state nonce was already consumed or does not exist.');
+    }
+
+    return {
+      workspaceId: consumeRes.rows[0]!.workspace_id,
+      redirectUri: consumeRes.rows[0]!.redirect_uri,
+    };
   }
 
   /**
@@ -67,11 +146,12 @@ export class GoogleAuthService {
    */
   public static async exchangeCodeForTokens(
     code: string,
-    workspaceId: string
+    workspaceId: string,
+    redirectUriOverride?: string
   ): Promise<GoogleTokenRecord> {
     const clientId = env.GOOGLE_CLIENT_ID;
     const clientSecret = env.GOOGLE_CLIENT_SECRET;
-    const redirectUri = env.GOOGLE_REDIRECT_URI || `${env.PUBLIC_PUBLISHING_DOMAIN}/api/v1/auth/google/callback`;
+    const redirectUri = redirectUriOverride || env.GOOGLE_REDIRECT_URI || `${env.PUBLIC_PUBLISHING_DOMAIN}/api/v1/auth/google/callback`;
 
     if (!clientId || !clientSecret) {
       throw new Error('GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET is missing from environment.');

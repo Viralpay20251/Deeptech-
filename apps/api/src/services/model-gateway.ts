@@ -83,11 +83,15 @@ export class ModelGateway {
 
     // 3. Provider invocation or deterministic simulation
     let result: ModelResponse;
-    const hasLiveKey = (env.MODEL_PROVIDER === 'openai' && !!env.OPENAI_API_KEY) ||
-                      (env.MODEL_PROVIDER === 'anthropic' && !!env.ANTHROPIC_API_KEY) ||
-                      (env.MODEL_PROVIDER === 'google' && !!env.GOOGLE_AI_API_KEY);
+    const isTestMode = env.NODE_ENV === 'test' && process.env['TEST_LIVE_OLLAMA'] !== 'true';
+    const hasLiveProvider =
+      !isTestMode &&
+      ((env.MODEL_PROVIDER === 'openai' && !!env.OPENAI_API_KEY) ||
+        (env.MODEL_PROVIDER === 'anthropic' && !!env.ANTHROPIC_API_KEY) ||
+        (env.MODEL_PROVIDER === 'google' && !!env.GOOGLE_AI_API_KEY) ||
+        env.MODEL_PROVIDER === 'ollama');
 
-    if (hasLiveKey) {
+    if (hasLiveProvider) {
       result = await this.callLiveProvider(options, assembledContent);
     } else {
       result = this.callDeterministicSimulator(options, assembledContent);
@@ -120,6 +124,9 @@ export class ModelGateway {
   }
 
   private static estimateCost(inputChars: number, maxTokens: number): number {
+    if (env.MODEL_PROVIDER === 'ollama') {
+      return 0; // Local execution incurs zero external API monetary cost
+    }
     const estPromptTokens = Math.ceil(inputChars / 4);
     const estCompTokens = Math.ceil(maxTokens / 2);
     return (
@@ -132,6 +139,11 @@ export class ModelGateway {
     options: ModelRequestOptions,
     content: string
   ): Promise<ModelResponse> {
+    // Local Ollama instance
+    if (env.MODEL_PROVIDER === 'ollama') {
+      return await this.callOllama(options, content);
+    }
+
     // OpenAI implementation if key is present
     if (env.MODEL_PROVIDER === 'openai' && env.OPENAI_API_KEY) {
       const { OpenAI } = await import('openai');
@@ -167,6 +179,89 @@ export class ModelGateway {
 
     // Default fallback to simulator
     return this.callDeterministicSimulator(options, content);
+  }
+
+  /**
+   * Execute model completion via local Ollama daemon
+   */
+  private static async callOllama(
+    options: ModelRequestOptions,
+    content: string
+  ): Promise<ModelResponse> {
+    const baseUrl = env.OLLAMA_BASE_URL.replace(/\/+$/, '');
+    const model = env.OLLAMA_MODEL;
+
+    interface OllamaChatPayload {
+      model: string;
+      messages: Array<{ role: string; content: string }>;
+      stream: boolean;
+      options: {
+        temperature: number;
+        num_predict: number;
+      };
+      format?: string;
+    }
+
+    const requestBody: OllamaChatPayload = {
+      model,
+      messages: [
+        { role: 'system', content: options.system_prompt },
+        { role: 'user', content: content },
+      ],
+      stream: false,
+      options: {
+        temperature: options.temperature ?? 0.2,
+        num_predict: options.max_tokens ?? 2000,
+      },
+    };
+
+    if (options.expected_json) {
+      requestBody.format = 'json';
+    }
+
+    try {
+      const response = await fetch(`${baseUrl}/api/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+        signal: AbortSignal.timeout(env.OLLAMA_TIMEOUT_MS),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Ollama responded with HTTP ${response.status}: ${errorText}`);
+      }
+
+      const data = (await response.json()) as {
+        model?: string;
+        message?: { content: string };
+        prompt_eval_count?: number;
+        eval_count?: number;
+      };
+
+      const text = data.message?.content ?? '';
+      const promptTokens =
+        data.prompt_eval_count ?? Math.ceil((options.system_prompt.length + content.length) / 4);
+      const completionTokens = data.eval_count ?? Math.ceil(text.length / 4);
+
+      return {
+        text,
+        model: data.model ?? model,
+        provider: 'ollama',
+        prompt_tokens: promptTokens,
+        completion_tokens: completionTokens,
+        cost_usd: 0.0,
+        is_simulated: false,
+      };
+    } catch (err) {
+      logger.warn({ err: (err as Error).message, baseUrl, model }, 'Ollama provider error; falling back to deterministic simulator');
+      if (env.NODE_ENV !== 'production') {
+        return this.callDeterministicSimulator(options, content);
+      }
+      throw err;
+    }
   }
 
   /**
@@ -214,13 +309,19 @@ export class ModelGateway {
         });
       }
     } else {
+      const topicMatch = options.user_content.match(/on:\s*([^\n]+)/i);
+      const topic = topicMatch ? topicMatch[1]!.trim() : 'Technical Architecture & Implementation Guide';
       textResponse =
-        `# Automated Research & Content Synthesis\n\n` +
-        `This asset is generated with evidence-backed provenance.\n\n` +
-        `## Key Findings\n` +
-        `- Verified user intent aligned with brand objectives.\n` +
-        `- No fabricated claims; citations grounded in public source data.\n` +
-        `- Meets uniqueness and differentiated value criteria.`;
+        `# Comprehensive Guide: ${topic}\n\n` +
+        `An in-depth, verified engineering guide providing practical implementation frameworks for modern teams.\n\n` +
+        `## 1. Architectural Principles & Core Mechanisms\n` +
+        `- Production-tested benchmarks and latency-sensitive patterns.\n` +
+        `- Zero fabricated claims; grounded strictly in verified empirical telemetry.\n\n` +
+        `## 2. Implementation Walkthrough & Best Practices\n` +
+        `Practical workflows designed for high-concurrency environments with clean separation of concerns.\n` +
+        `Detailed architectural guidelines ensure predictable performance under sustained workload.\n\n` +
+        `## 3. Verified Next Steps & Onward Path\n` +
+        `Review the official implementation repository and documentation at the verified canonical endpoint.`;
     }
 
     return {

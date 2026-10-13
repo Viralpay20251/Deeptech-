@@ -26,10 +26,13 @@ const envSchema = z.object({
 
   INTERNAL_WORKSPACE_ID: z.string().uuid('INTERNAL_WORKSPACE_ID must be a valid UUID').optional(),
 
-  MODEL_PROVIDER: z.enum(['openai', 'anthropic', 'google', 'azure-openai']).default('openai'),
+  MODEL_PROVIDER: z.enum(['openai', 'anthropic', 'google', 'azure-openai', 'ollama']).default('openai'),
   OPENAI_API_KEY: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
   GOOGLE_AI_API_KEY: z.string().optional(),
+  OLLAMA_BASE_URL: z.string().default('http://localhost:11434'),
+  OLLAMA_MODEL: z.string().default('llama3.2:latest'),
+  OLLAMA_TIMEOUT_MS: z.coerce.number().default(120000),
 
   MODEL_BUDGET_PER_TASK_USD: z.coerce.number().default(0.50),
   MODEL_BUDGET_DAILY_USD: z.coerce.number().default(10.00),

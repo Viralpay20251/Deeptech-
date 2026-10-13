@@ -16,9 +16,9 @@
     "test:e2e": "vitest run tests/e2e",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "db:migrate": "node --loader tsx scripts/migrate.ts",
-    "db:rollback": "node --loader tsx scripts/rollback.ts",
-    "db:seed:dev": "NODE_ENV=development node --loader tsx src/db/seeds/dev-seed.ts"
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:rollback": "tsx scripts/rollback.ts",
+    "db:seed:dev": "tsx src/db/seeds/dev-seed.ts"
   },
   "dependencies": {
     "express": "^4.21.1",
