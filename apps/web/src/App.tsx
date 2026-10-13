@@ -178,7 +178,7 @@ export function App() {
             { check_name: 'Substance & Value', passed: true, message: 'Substantive depth verified.' },
             { check_name: 'Brand Safety Policy', passed: true, message: 'Zero prohibited claims found.' },
           ],
-          citation_urls: ['https://standards.org/reference'],
+          citation_urls: ['https://chatr.ai/product/interactive-video'],
           status: 'pending',
           created_at: new Date().toISOString(),
         },
@@ -291,6 +291,34 @@ export function App() {
   const triggerSliceWorkflow = async () => {
     setTriggering(true);
     setNotification('Executing vertical slice: Ingesting signal -> Scoring -> Synthesising -> Running 10 QA gates...');
+
+    // Resolve brand-specific empirical demand signal
+    const activeBrand = brands.find((b) => b.id === selectedBrandId);
+    const brandSlug = activeBrand?.slug || 'chatr';
+
+    let signalData = {
+      topic: 'Engineering Productivity & Autonomous Agent Workflows 2026',
+      source_url: 'https://chatr.ai/product/interactive-video',
+      raw_text: 'Verified enterprise demand across video interaction tools, autonomous messaging workflows, and conversion metrics.',
+      intent_type: 'commercial_investigation',
+    };
+
+    if (brandSlug === 'talentxcel') {
+      signalData = {
+        topic: 'Verified Technical Career Mobility & Skill Benchmarks 2026',
+        source_url: 'https://talentxcel.com/career-insights',
+        raw_text: 'Verified career mobility patterns, tailored technical resume parsing, and verified hiring requirements across tech roles.',
+        intent_type: 'informational',
+      };
+    } else if (brandSlug === 'nuty-tales') {
+      signalData = {
+        topic: 'Artisanal Gastronomy & Wholesome Nutrient Sourcing 2026',
+        source_url: 'https://nutytales.com/gastronomy-journal',
+        raw_text: 'Wholesome artisanal recipes, premium whole-food nutritional provenance, and verified culinary sourcing.',
+        intent_type: 'informational',
+      };
+    }
+
     try {
       const res = await fetch('/api/v1/workflows/trigger', {
         method: 'POST',
@@ -298,12 +326,7 @@ export function App() {
         body: JSON.stringify({
           brand_id: selectedBrandId || '00000000-0000-0000-0001-000000000001',
           idempotency_key: `ui_run_${Date.now()}`,
-          signal_summary: {
-            topic: 'Autonomous Tooling Best Practices 2026',
-            source_url: 'https://standards.org/reference',
-            raw_text: 'Demand verified across public web search queries.',
-            intent_type: 'informational',
-          },
+          signal_summary: signalData,
         }),
       });
       const data = await res.json();
