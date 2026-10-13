@@ -1,0 +1,38 @@
+{
+  "name": "autonomous-growth-os",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Autonomous Growth OS — AI-agentic cross-channel traffic acquisition platform",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev": "npm run dev --workspace=apps/api",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:unit": "npm run test:unit --workspace=apps/api",
+    "test:integration": "npm run test:integration --workspace=apps/api",
+    "test:e2e": "npm run test:e2e --workspace=apps/api",
+    "db:migrate": "npm run db:migrate --workspace=apps/api",
+    "db:seed:dev": "npm run db:seed:dev --workspace=apps/api",
+    "db:rollback": "npm run db:rollback --workspace=apps/api",
+    "safety:check": "node scripts/safety-check.js"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "@types/node": "^22.0.0",
+    "prettier": "^3.3.3",
+    "eslint": "^9.11.0",
+    "@typescript-eslint/eslint-plugin": "^8.7.0",
+    "@typescript-eslint/parser": "^8.7.0"
+  }
+}
