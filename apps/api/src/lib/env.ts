@@ -38,6 +38,21 @@ const envSchema = z.object({
   QUEUE_MAX_CONCURRENCY: z.coerce.number().default(5),
   QUEUE_RETRY_LIMIT: z.coerce.number().default(3),
 
+  // Public Publishing Surface (Strictly prohibits .internal domains)
+  PUBLIC_PUBLISHING_DOMAIN: z
+    .string()
+    .default('https://deeptech-taupe.vercel.app')
+    .refine((val) => !val.toLowerCase().includes('.internal'), {
+      message: 'PUBLIC_PUBLISHING_DOMAIN cannot use .internal (ICANN reserved for private networks)',
+    }),
+
+  // Google OAuth, Search Console & GA4 (Stored securely; never committed)
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_REDIRECT_URI: z.string().optional(),
+  GSC_PROPERTY_URL: z.string().optional(),
+  GA4_PROPERTY_ID: z.string().optional(),
+
   // Feature flags — all OFF by default
   FEATURE_PAID_MEDIA: z.coerce.boolean().default(false),
   FEATURE_SAAS_ONBOARDING: z.coerce.boolean().default(false),

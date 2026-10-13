@@ -21,6 +21,8 @@ import { approvalsRouter } from './routes/approvals.js';
 import { killSwitchesRouter } from './routes/kill-switches.js';
 import { analyticsRouter } from './routes/analytics.js';
 import { redirectsRouter, trackedLinksApiRouter } from './routes/redirects.js';
+import { authGoogleRouter } from './routes/auth-google.js';
+import { publicPagesRouter, pagesApiRouter } from './routes/public-pages.js';
 
 const app = express();
 
@@ -50,8 +52,9 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// 4. API Routes & Transparent Redirect Router
+// 4. API Routes, Transparent Redirect Router & Independent Public Surface
 app.use(redirectsRouter); // Handles GET /r/:short_code
+app.use(publicPagesRouter); // Handles GET /p/:slug, /sitemap.xml, /robots.txt
 app.use('/health', healthRouter);
 app.use('/api/v1/brands', brandsRouter);
 app.use('/api/v1/connectors', connectorsRouter);
@@ -61,6 +64,8 @@ app.use('/api/v1/approvals', approvalsRouter);
 app.use('/api/v1/kill-switches', killSwitchesRouter);
 app.use('/api/v1/analytics', analyticsRouter);
 app.use('/api/v1/tracked-links', trackedLinksApiRouter);
+app.use('/api/v1/auth/google', authGoogleRouter);
+app.use('/api/v1/pages', pagesApiRouter);
 
 // 5. Global Error Handler
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

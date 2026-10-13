@@ -8,3 +8,4 @@ export * from './metrics.js';
 export * from './hybrid-fusion.js';
 export * from './datasets.js';
 export * from './evaluator.js';
+export * from './bandits.js';
