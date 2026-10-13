@@ -43,7 +43,13 @@ approvalsRouter.get('/', async (req: Request, res: Response) => {
 approvalsRouter.post('/:id/decide', async (req: Request, res: Response) => {
   const { decision, notes = '' } = req.body;
   const workspaceId = (req.query['workspace_id'] as string) ?? '00000000-0000-0000-0000-000000000001';
-  const userId = '00000000-0000-0000-0000-000000000001'; // Operator user
+  
+  // Look up valid operator user in workspace
+  const userRes = await query<{ id: string }>(
+    `SELECT id FROM users WHERE workspace_id = $1 ORDER BY created_at ASC LIMIT 1`,
+    [workspaceId]
+  );
+  const userId = userRes.rows[0]?.id ?? null;
 
   if (decision !== 'approved' && decision !== 'rejected') {
     res.status(400).json({

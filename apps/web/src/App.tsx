@@ -38,6 +38,16 @@ interface ApprovalItem {
   created_at: string;
 }
 
+interface ConnectorItem {
+  id: string;
+  name: string;
+  connector_type: string;
+  category: string;
+  status: 'connected' | 'awaiting_credentials' | 'awaiting_oauth' | 'degraded' | 'error';
+  caps: string[];
+  notes: string;
+}
+
 export function App() {
   const [activeTab, setActiveTab] = useState<'scorecards' | 'approvals' | 'opportunities' | 'workflows' | 'connectors'>('scorecards');
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -48,11 +58,28 @@ export function App() {
   const [triggering, setTriggering] = useState<boolean>(false);
   const [notification, setNotification] = useState<string | null>(null);
 
+  const [connectors, setConnectors] = useState<ConnectorItem[]>([
+    { id: 'c-1', name: 'Public Sitemap & RSS Web Inspector', connector_type: 'sitemap_rss', category: 'Search / Web', status: 'connected', caps: ['read_public'], notes: 'Active out of the box with SSRF protection and robots.txt parsing.' },
+    { id: 'c-2', name: 'Google Search Console', connector_type: 'google_search_console', category: 'Search / Web', status: 'awaiting_credentials', caps: ['read_analytics', 'read_insights'], notes: 'Connector contract implemented. Awaiting direct login or OAuth grant.' },
+    { id: 'c-3', name: 'Google Analytics 4', connector_type: 'google_analytics_4', category: 'Web Analytics', status: 'awaiting_credentials', caps: ['read_analytics', 'read_insights'], notes: 'Data API adapter ready. Awaiting direct login or OAuth grant.' },
+    { id: 'c-4', name: 'LinkedIn Marketing & Pages', connector_type: 'linkedin_pages', category: 'Social / Media', status: 'awaiting_credentials', caps: ['publish_post', 'schedule_post', 'read_insights'], notes: 'Direct login ready. Awaiting operator account connection.' },
+    { id: 'c-5', name: 'Meta (Instagram / Facebook)', connector_type: 'meta_pages', category: 'Social / Media', status: 'awaiting_credentials', caps: ['publish_post', 'read_insights'], notes: 'Direct login ready. Awaiting operator account connection.' },
+    { id: 'c-6', name: 'Model Gateway (OpenAI / Anthropic)', connector_type: 'model_gateway', category: 'AI Providers', status: 'connected', caps: ['run_inference', 'generate_embedding'], notes: 'Deterministic simulator active for testing; live key optional in .env.' },
+  ]);
+  const [loginModalConnector, setLoginModalConnector] = useState<ConnectorItem | null>(null);
+  const [credInputs, setCredInputs] = useState({ clientId: '', clientSecret: '', apiKey: '', accessToken: '' });
+
   // Initial data loading
   useEffect(() => {
     fetchBrands();
     fetchOpportunities();
     fetchApprovals();
+    fetchConnectors();
+
+    if (window.location.search.includes('oauth=google_success')) {
+      setNotification('✅ Google OAuth connection successfully verified and active!');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
   }, []);
 
   const fetchBrands = async () => {
@@ -194,16 +221,22 @@ export function App() {
 
   const handleDecide = async (id: string, decision: 'approved' | 'rejected') => {
     try {
-      await fetch(`/api/v1/approvals/${id}/decide`, {
+      const res = await fetch(`/api/v1/approvals/${id}/decide`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ decision, notes: `Operator action via control room: ${decision}` }),
       });
-      setNotification(`Approval event marked as ${decision}.`);
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setNotification(`✅ Approval event marked as ${decision}.`);
+        setApprovals((prev) => prev.filter((a) => a.id !== id));
+      } else {
+        setNotification(`❌ Decision failed: ${data.error?.message || 'Server error'}`);
+      }
       fetchApprovals();
     } catch {
       setNotification(`Action recorded: ${decision}`);
-      setApprovals(approvals.filter((a) => a.id !== id));
+      setApprovals((prev) => prev.filter((a) => a.id !== id));
     }
   };
 

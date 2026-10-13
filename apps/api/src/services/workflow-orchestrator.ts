@@ -361,7 +361,7 @@ export class WorkflowOrchestrator {
   public static async decideApproval(
     approvalEventId: string,
     workspaceId: string,
-    userId: string,
+    userId: string | null,
     decision: 'approved' | 'rejected',
     notes: string
   ): Promise<void> {

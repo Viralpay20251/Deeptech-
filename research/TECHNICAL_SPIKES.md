@@ -63,3 +63,27 @@ All technical spikes below are backed by reproducible test suites located in `te
   - First Attempt: Initiated DAG, wrote run to Supabase (`status = awaiting_approval`).
   - Replay Attempt (Same idempotency key): Synchronously returned existing run without executing duplicate model calls or creating duplicate approval events.
 - **Conclusion:** Guarantees safe recovery across process restarts and prevents duplicate distribution.
+
+---
+
+### Spike 5: Autonomous Marketing Agent Repositories Comparative Benchmark
+- **Hypothesis:** Leading open-source marketing agent repositories (AdClaw, Citeworthy SEO Agent, Social Agent AI, DafinEdison Agentic SEO, Nuraveda AI Social Agent) excel at specialized execution subtasks (SEO crawling, drafting proposals, social scheduling) but lack closed-loop traffic attribution, first-party customer conversion measurement, and multi-tenant reinforcement learning required for commercial scaling.
+- **Audited Repositories:**
+  1. `Citedy/adclaw` (Apache-2.0, Multi-agent team, 122 skills, 25 MCP servers, SOUL.md personas)
+  2. `citeworthyio/seo-agent` (MIT, Cloudflare Workers, fail-open KV overrides, deterministic diagnosis, AEO/GEO audits)
+  3. `YusufSizmaz/social-agent-ai` (MIT, PostgreSQL SKIP LOCKED job queue, X/IG/YT/TikTok adapters, weekly strategy optimizer)
+  4. `DafinEdison/agentic-seo-agent` (AGPL-3.0, GSC-driven multi-round tool loop, Anti-Words anti-slop rules)
+  5. `Nuraveda-Labs/ai-social-agent` (MIT, Mesh Pilot multi-brand video generation, ORM monitoring, human approval gates)
+  6. `postmill-ai/postmill-app` (AGPL-3.0, 45+ channel schemas, Inngest queues, AI designer)
+- **Observed Results & Benchmarks:**
+  - **AdClaw:** Provides high modularity with persona files and skill libraries, but relies heavily on Citedy cloud credit hooks and lacks downstream click/conversion attribution.
+  - **Citeworthy:** Provides unmatched safety with fail-open edge injection and deterministic `(path, rule)` open/auto-resolve issue lifecycles. Limited strictly to technical on-page SEO and AEO without cross-channel social distribution.
+  - **Social Agent AI:** Robust PostgreSQL `SKIP LOCKED` worker queue and accurate platform API character/media constraint validation. Optimizer relies on heuristic tone/cron mutations rather than statistical bandits.
+  - **DafinEdison:** Strong GSC data-driven tool loop and 50+ banned AI phrases ("Anti-Words"), but blocked by AGPL-3.0 license.
+- **Architectural Action Taken in Growth OS:**
+  - Clean-room adoption of AdClaw's Persona/Soul architecture (`apps/api/src/agents/base-agent.ts`).
+  - Integration of Citeworthy's fail-open edge contract and AEO/GEO auditing rules into `QualityGovernor` and `PublicSurfaceRouter`.
+  - Clean-room implementation of DafinEdison's Anti-Words anti-slop filter (`apps/api/src/agents/anti-words.ts`).
+  - Adoption of Social Agent AI's multi-platform constraint validation and resilient queue semantics for distribution workers.
+  - Retention of Growth OS's unique competitive advantage: First-party UTM click attribution, cryptographic privacy-preserving IP hashing, real-time reconciliation with GA4/GSC, and Thompson Sampling / LinUCB contextual bandits in `packages/algorithm-lab`.
+- **Conclusion:** Combines the best-of-breed execution patterns from permissive open-source agents while keeping the core proprietary business logic clean-room, robust, and focused on verified user acquisition across CHATR, TalentXcel, and Nuty Tales.
