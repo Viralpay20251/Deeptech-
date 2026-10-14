@@ -18,7 +18,8 @@
     "test:coverage": "vitest run --coverage",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:rollback": "tsx scripts/rollback.ts",
-    "db:seed:dev": "tsx src/db/seeds/dev-seed.ts"
+    "db:seed:dev": "tsx src/db/seeds/dev-seed.ts",
+    "worker:crawler": "tsx src/workers/crawler-worker.ts"
   },
   "dependencies": {
     "express": "^4.21.1",

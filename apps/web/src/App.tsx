@@ -894,8 +894,8 @@ export function App() {
       } else {
         setNotification(`❌ Error: ${data.error?.message}`);
       }
-    } catch {
-      setNotification('✅ Workflow simulated execution complete. Asset placed in Approval Queue.');
+    } catch (err) {
+      setNotification(`❌ Workflow execution error: ${(err as Error).message}`);
     } finally {
       setTriggering(false);
     }
@@ -915,9 +915,8 @@ export function App() {
       } else {
         setNotification(`❌ Decision failed: ${data.error?.message}`);
       }
-    } catch {
-      setNotification(`Action recorded: ${decision}`);
-      setApprovals((prev) => prev.filter((a) => a.id !== id));
+    } catch (err) {
+      setNotification(`❌ Decision error: ${(err as Error).message}`);
     }
   };
 

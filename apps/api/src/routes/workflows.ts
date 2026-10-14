@@ -42,6 +42,8 @@ workflowsRouter.post('/trigger', async (req: Request, res: Response) => {
         raw_text: signal_summary.raw_text ?? signal_summary.topic,
         intent_type: signal_summary.intent_type ?? 'informational',
         target_locale: signal_summary.target_locale ?? 'en',
+        search_queries: signal_summary.search_queries,
+        is_simulation: signal_summary.is_simulation,
       },
     });
 

@@ -31,5 +31,11 @@
       "source": "/(.*)",
       "destination": "/index.html"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/v1/crawler/worker/process-next",
+      "schedule": "0 4 * * *"
+    }
   ]
 }

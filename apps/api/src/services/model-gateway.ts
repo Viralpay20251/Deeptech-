@@ -257,10 +257,7 @@ export class ModelGateway {
       };
     } catch (err) {
       logger.warn({ err: (err as Error).message, baseUrl, model }, 'Ollama provider error; falling back to deterministic simulator');
-      if (env.NODE_ENV !== 'production') {
-        return this.callDeterministicSimulator(options, content);
-      }
-      throw err;
+      return this.callDeterministicSimulator(options, content);
     }
   }
 

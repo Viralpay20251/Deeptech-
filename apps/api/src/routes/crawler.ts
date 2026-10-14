@@ -147,3 +147,15 @@ crawlerRouter.post('/inspect-url', async (req: Request, res: Response) => {
     res.status(400).json({ success: false, error: { code: 'INSPECT_FAILED', message: (err as Error).message } });
   }
 });
+
+// ─── GET & POST /worker/process-next (For Vercel Crons & background triggers) ─
+crawlerRouter.all('/worker/process-next', async (_req: Request, res: Response) => {
+  try {
+    const { CrawlerWorker } = await import('../workers/crawler-worker.js');
+    const result = await CrawlerWorker.processNextJob();
+    res.json({ success: true, data: result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'WORKER_TICK_FAILED', message: (err as Error).message } });
+  }
+});
+

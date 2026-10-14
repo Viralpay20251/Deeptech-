@@ -707,6 +707,54 @@ export class WorkflowOrchestrator {
       }
     });
 
+    if (decision === 'approved' && event.resource_type === 'content_asset') {
+      try {
+        const assetRes = await query<{
+          id: string;
+          workspace_id: string;
+          brand_id: string;
+          title: string;
+          body_markdown: string;
+        }>(
+          `SELECT id, workspace_id, brand_id, title, body_markdown FROM content_assets WHERE id = $1`,
+          [event.resource_id]
+        );
+
+        if (assetRes.rows.length > 0 && assetRes.rows[0]) {
+          const asset = assetRes.rows[0];
+          const baseSlug = asset.title
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-|-$/g, '')
+            .substring(0, 80);
+          const slug = `${baseSlug}-${asset.id.substring(0, 8)}`;
+
+          const htmlContent = `
+            <article class="prose lg:prose-xl max-w-4xl mx-auto py-8">
+              <h1 class="text-3xl font-bold mb-4">${asset.title}</h1>
+              <div class="prose-content">${asset.body_markdown.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br/>')}</div>
+            </article>
+          `;
+
+          const { PublishingService } = await import('./publishing-service.js');
+          await PublishingService.publishPage({
+            workspaceId,
+            brandId: asset.brand_id,
+            assetId: asset.id,
+            approvalEventId,
+            slug,
+            title: asset.title,
+            metaDescription: asset.title,
+            schemaType: 'Article',
+            htmlContent,
+            ctaLabel: 'Learn More',
+          });
+        }
+      } catch (pubErr) {
+        logger.error({ err: pubErr }, 'Automatic publication of approved asset failed');
+      }
+    }
+
     await this.recordAudit(workspaceId, 'user', `approval_${decision}`, 'approval_event', approvalEventId, {
       userId,
       resource_id: event.resource_id,
