@@ -1303,38 +1303,30 @@ export class MetaStudioService {
     }
 
     // 3. Verify operator authorization and workspace membership
-    let effectiveOperatorId = params.operatorId;
-    if (effectiveOperatorId) {
-      const userRes = await query<{ id: string; role: string }>(
-        `SELECT id, role FROM users WHERE id = $1 AND workspace_id = $2`,
-        [effectiveOperatorId, workspaceId]
-      );
-      if (!userRes.rows.length) {
-        const err = new Error(`Operator ${effectiveOperatorId} is not a member of workspace ${workspaceId}.`);
-        (err as any).statusCode = 403;
-        (err as any).code = 'OPERATOR_FORBIDDEN';
-        throw err;
-      }
-      const role = userRes.rows[0]!.role;
-      if (!['workspace_admin', 'operator', 'reviewer', 'publisher'].includes(role)) {
-        const err = new Error(`User with role "${role}" is not authorized to approve metadata proposals.`);
-        (err as any).statusCode = 403;
-        (err as any).code = 'OPERATOR_UNAUTHORIZED';
-        throw err;
-      }
-    } else {
-      // Look up authorized operator in workspace
-      const defaultUserRes = await query<{ id: string }>(
-        `SELECT id FROM users WHERE workspace_id = $1 AND role IN ('workspace_admin', 'operator', 'reviewer', 'publisher') ORDER BY created_at ASC LIMIT 1`,
-        [workspaceId]
-      );
-      if (!defaultUserRes.rows.length) {
-        const err = new Error(`No authorized operator found for workspace ${workspaceId}. Valid operator identity is required to decide proposals.`);
-        (err as any).statusCode = 401;
-        (err as any).code = 'OPERATOR_AUTHENTICATION_REQUIRED';
-        throw err;
-      }
-      effectiveOperatorId = defaultUserRes.rows[0]!.id;
+    const effectiveOperatorId = params.operatorId;
+    if (!effectiveOperatorId) {
+      const err = new Error(`Explicit operator identity is required to decide proposals. Provide a valid operator ID or JWT.`);
+      (err as any).statusCode = 401;
+      (err as any).code = 'OPERATOR_AUTHENTICATION_REQUIRED';
+      throw err;
+    }
+
+    const userRes = await query<{ id: string; role: string }>(
+      `SELECT id, role FROM users WHERE id = $1 AND workspace_id = $2`,
+      [effectiveOperatorId, workspaceId]
+    );
+    if (!userRes.rows.length) {
+      const err = new Error(`Operator ${effectiveOperatorId} is not a member of workspace ${workspaceId}.`);
+      (err as any).statusCode = 403;
+      (err as any).code = 'OPERATOR_FORBIDDEN';
+      throw err;
+    }
+    const role = userRes.rows[0]!.role;
+    if (!['workspace_admin', 'operator', 'reviewer', 'publisher'].includes(role)) {
+      const err = new Error(`User with role "${role}" is not authorized to approve metadata proposals.`);
+      (err as any).statusCode = 403;
+      (err as any).code = 'OPERATOR_UNAUTHORIZED';
+      throw err;
     }
 
     // 4. Grounding validation when approving

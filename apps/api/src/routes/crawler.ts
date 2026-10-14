@@ -2,68 +2,95 @@
  * Crawler and Web Intelligence API Routes
  *
  * Implements P1 endpoints:
- * - POST /api/v1/crawler/jobs — Create and trigger a crawl job
+ * - POST /api/v1/crawler/jobs — Create and enqueue a crawl job into durable PostgreSQL queue
  * - GET  /api/v1/crawler/jobs — List crawl jobs
  * - GET  /api/v1/crawler/jobs/:id — Get status & summary of a specific crawl job
  * - GET  /api/v1/crawler/jobs/:id/snapshots — Get page snapshots discovered in a job
  * - POST /api/v1/crawler/inspect-url — Synchronously inspect a single URL
+ * - GET/POST /api/v1/crawler/worker/process-next — Protected worker trigger (supports Vercel Cron GET and manual POST)
  */
 
 import { Router, type Request, type Response } from 'express';
 import { query } from '../lib/db.js';
 import { CrawlEngineService, type CrawlProfile } from '../services/crawl-engine.js';
+import { JobQueueService } from '../services/job-queue-service.js';
+import { authenticate, requireRole, requireWorkspaceScope, verifyCronSecret } from '../middleware/auth.js';
 
 export const crawlerRouter = Router();
 
 // ─── POST /jobs ───────────────────────────────────────────────────────────────
-crawlerRouter.post('/jobs', async (req: Request, res: Response) => {
-  const { workspace_id, brand_id, label, seed_urls, profile, max_pages } = req.body as {
-    workspace_id?: string;
-    brand_id?: string;
-    label?: string;
-    seed_urls?: string[];
-    profile?: CrawlProfile;
-    max_pages?: number;
-  };
+crawlerRouter.post(
+  '/jobs',
+  authenticate,
+  requireRole(['workspace_admin', 'operator']),
+  requireWorkspaceScope,
+  async (req: Request, res: Response) => {
+    const { brand_id, label, seed_urls, profile, max_pages } = req.body as {
+      brand_id?: string;
+      label?: string;
+      seed_urls?: string[];
+      profile?: CrawlProfile;
+      max_pages?: number;
+    };
 
-  if (!seed_urls || !Array.isArray(seed_urls) || seed_urls.length === 0) {
-    res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'seed_urls must be a non-empty array' } });
-    return;
+    if (!seed_urls || !Array.isArray(seed_urls) || seed_urls.length === 0) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'seed_urls must be a non-empty array' } });
+      return;
+    }
+
+    const workspaceId = req.user!.workspace_id;
+    let defaultLabel = 'Web Crawl';
+    try {
+      if (seed_urls[0]) defaultLabel = `Crawl: ${new URL(seed_urls[0]).hostname}`;
+    } catch {
+      defaultLabel = 'Web Crawl';
+    }
+    const jobLabel = label || defaultLabel;
+
+    try {
+      // 1. Create tracking record in crawl_jobs
+      const crawlJob = await CrawlEngineService.createCrawlJob({
+        workspaceId,
+        brandId: brand_id || null,
+        label: jobLabel,
+        seedUrls: seed_urls,
+        profile: profile || 'discovery',
+        maxPages: max_pages || 20,
+      });
+
+      // 2. Enqueue into durable PostgreSQL job_queue
+      // Worker will claim with FOR UPDATE SKIP LOCKED and execute with lease heartbeats
+      const queueJob = await JobQueueService.enqueue({
+        jobType: 'crawl',
+        workspaceId,
+        brandId: brand_id || null,
+        payload: {
+          crawl_job_id: crawlJob.id,
+          label: jobLabel,
+          seed_urls,
+          profile: profile || 'discovery',
+          max_pages: max_pages || 20,
+        },
+        priority: 70,
+      });
+
+      res.status(202).json({
+        success: true,
+        execution_mode: 'live',
+        message: 'Crawl job created and queued in durable PostgreSQL queue.',
+        data: {
+          id: crawlJob.id,
+          queue_job_id: queueJob.id,
+          status: 'queued',
+          label: jobLabel,
+          workspace_id: workspaceId,
+        },
+      });
+    } catch (err) {
+      res.status(500).json({ success: false, error: { code: 'CRAWL_CREATION_FAILED', message: (err as Error).message } });
+    }
   }
-
-  const workspaceId = workspace_id || '00000000-0000-0000-0000-000000000001';
-  let defaultLabel = 'Web Crawl';
-  try {
-    if (seed_urls[0]) defaultLabel = `Crawl: ${new URL(seed_urls[0]).hostname}`;
-  } catch {
-    defaultLabel = 'Web Crawl';
-  }
-  const jobLabel = label || defaultLabel;
-
-  try {
-    const job = await CrawlEngineService.createCrawlJob({
-      workspaceId,
-      brandId: brand_id || null,
-      label: jobLabel,
-      seedUrls: seed_urls,
-      profile: profile || 'discovery',
-      maxPages: max_pages || 20,
-    });
-
-    // Execute crawl asynchronously
-    CrawlEngineService.executeCrawlJob(job.id).catch((err) => {
-      console.error('Async crawl job execution failed:', err);
-    });
-
-    res.json({
-      success: true,
-      message: 'Crawl job initiated.',
-      data: { id: job.id, status: job.status, label: jobLabel },
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: { code: 'CRAWL_CREATION_FAILED', message: (err as Error).message } });
-  }
-});
+);
 
 // ─── GET /jobs ────────────────────────────────────────────────────────────────
 crawlerRouter.get('/jobs', async (req: Request, res: Response) => {
@@ -73,7 +100,8 @@ crawlerRouter.get('/jobs', async (req: Request, res: Response) => {
     const result = await query(
       `SELECT cj.id, cj.workspace_id, cj.brand_id, cj.label, cj.seed_urls,
               cj.profile, cj.status, cj.max_pages, cj.pages_crawled, cj.error,
-              cj.started_at, cj.completed_at, cj.created_at, b.display_name AS brand_name
+              cj.started_at, cj.completed_at, cj.created_at,
+              b.display_name as brand_name
        FROM crawl_jobs cj
        LEFT JOIN brands b ON cj.brand_id = b.id
        WHERE cj.workspace_id = $1
@@ -92,19 +120,34 @@ crawlerRouter.get('/jobs/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
 
   try {
-    const result = await query(
-      `SELECT id, workspace_id, brand_id, label, seed_urls, profile, status,
-              max_pages, pages_crawled, error, started_at, completed_at, created_at
-       FROM crawl_jobs WHERE id = $1`,
+    const jobRes = await query(
+      `SELECT cj.*, b.display_name as brand_name
+       FROM crawl_jobs cj
+       LEFT JOIN brands b ON cj.brand_id = b.id
+       WHERE cj.id = $1`,
       [id]
     );
 
-    if (result.rowCount === 0) {
-      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Crawl job not found' } });
+    if (!jobRes.rows.length) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: `Job ${id} not found` } });
       return;
     }
 
-    res.json({ success: true, data: result.rows[0] });
+    const job = jobRes.rows[0];
+
+    // Get snapshot count
+    const countRes = await query<{ count: string }>(
+      `SELECT COUNT(*) as count FROM page_snapshots WHERE crawl_job_id = $1`,
+      [id]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        ...job,
+        snapshots_recorded: parseInt(countRes.rows[0]?.count || '0', 10),
+      },
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: (err as Error).message } });
   }
@@ -116,12 +159,12 @@ crawlerRouter.get('/jobs/:id/snapshots', async (req: Request, res: Response) => 
 
   try {
     const result = await query(
-      `SELECT id, crawl_job_id, url, status_code, title, h1, meta_desc, canonical,
-              robots_tag, word_count, internal_links, external_links, images_count,
-              images_missing_alt, schema_types, open_graph, twitter_card, snapshot_at
+      `SELECT id, url, status_code, title, h1, meta_desc, canonical, robots_tag,
+              word_count, internal_links, external_links, images_count, images_missing_alt,
+              schema_types, open_graph, twitter_card, crawled_at
        FROM page_snapshots
        WHERE crawl_job_id = $1
-       ORDER BY snapshot_at DESC`,
+       ORDER BY crawled_at ASC`,
       [id]
     );
 
@@ -148,37 +191,24 @@ crawlerRouter.post('/inspect-url', async (req: Request, res: Response) => {
   }
 });
 
-// ─── POST /worker/process-next (Protected Vercel Cron / internal worker trigger) ─
-// Requires CRON_SECRET header: x-cron-secret or Authorization: Bearer <secret>
-crawlerRouter.post('/worker/process-next', async (req: Request, res: Response) => {
-  const cronSecret = process.env['CRON_SECRET'];
-  if (cronSecret) {
-    const supplied =
-      req.headers['x-cron-secret'] ||
-      req.headers['authorization']?.replace(/^Bearer\s+/i, '');
-    // Timing-safe comparison using timingSafeEqual
-    const { timingSafeEqual } = await import('crypto');
-    const expected = Buffer.from(cronSecret, 'utf8');
-    const actual = Buffer.from(String(supplied ?? ''), 'utf8');
-    const safe = expected.length === actual.length && timingSafeEqual(expected, actual);
-    if (!safe) {
-      res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Invalid or missing CRON_SECRET.' } });
-      return;
-    }
-  } else {
-    // No secret configured — only allow in non-production
-    if (process.env['NODE_ENV'] === 'production') {
-      res.status(503).json({ success: false, error: { code: 'NOT_CONFIGURED', message: 'CRON_SECRET is not set. Worker endpoint disabled in production until secret is configured.' } });
-      return;
-    }
-  }
-
+// ─── Worker Tick Handler ──────────────────────────────────────────────────────
+const handleWorkerTick = async (_req: Request, res: Response) => {
   try {
     const { CrawlerWorker } = await import('../workers/crawler-worker.js');
     const result = await CrawlerWorker.processNextJob();
-    res.json({ success: true, data: result });
+    res.json({
+      success: true,
+      execution_mode: 'live',
+      observed_at: new Date().toISOString(),
+      data: result,
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: { code: 'WORKER_TICK_FAILED', message: (err as Error).message } });
   }
-});
+};
 
+// ─── GET & POST /worker/process-next ──────────────────────────────────────────
+// Supports Vercel Cron (which sends GET with Authorization: Bearer <CRON_SECRET>)
+// and manual administrative triggers (POST with x-cron-secret)
+crawlerRouter.get('/worker/process-next', verifyCronSecret, handleWorkerTick);
+crawlerRouter.post('/worker/process-next', verifyCronSecret, handleWorkerTick);

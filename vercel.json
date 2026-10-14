@@ -14,7 +14,7 @@
   "crons": [
     {
       "path": "/api/v1/crawler/worker/process-next",
-      "schedule": "*/5 * * * *",
+      "schedule": "0 4 * * *",
       "description": "Crawler worker — processes one pending crawl job per tick. Protected by CRON_SECRET."
     }
   ]

@@ -527,7 +527,10 @@ connectorsRouter.post('/sync', async (req: Request, res: Response) => {
     if (connector_type === 'sitemap_rss_inspector' || connector_type === 'sitemap_rss') {
       const sitemapUrl = target_url || 'https://chatr.chat/sitemap.xml';
       const connector = new SitemapRssConnector();
-      const discoveries = await connector.fetchSitemap(sitemapUrl).catch(() => []);
+      const discoveries = await connector.fetchSitemap(sitemapUrl);
+      if (!discoveries || discoveries.length === 0) {
+        throw new Error(`Sitemap sync returned 0 items from URL: ${sitemapUrl}`);
+      }
       rowsFetched = discoveries.length;
       rowsUpserted = discoveries.length;
       syncResultData = { discoveriesCount: discoveries.length, sitemapUrl };
@@ -545,7 +548,7 @@ connectorsRouter.post('/sync', async (req: Request, res: Response) => {
     } else if (connector_type === 'pagespeed_crux') {
       const auditUrl = target_url || 'https://chatr.chat';
       const connector = new PageSpeedCruxConnector();
-      const auditRes = await connector.runAudit({ url: auditUrl }).catch(() => null);
+      const auditRes = await connector.runAudit({ url: auditUrl });
       if (!auditRes) {
         throw new Error(`PageSpeed audit returned null for URL: ${auditUrl}. The API may be unavailable or the URL is not accessible.`);
       }
@@ -563,9 +566,12 @@ connectorsRouter.post('/sync', async (req: Request, res: Response) => {
       const term = query_term || 'Search engine optimization';
       const connector = new WikipediaConnector();
       const entity = await connector.getEntitySummary(term);
-      rowsFetched = entity ? 1 : 0;
-      rowsUpserted = entity ? 1 : 0;
-      syncResultData = entity ? { ...entity } : { status: 'not_found' };
+      if (!entity) {
+        throw new Error(`Wikipedia entity not found for query: "${term}". Sync cannot complete without valid entity.`);
+      }
+      rowsFetched = 1;
+      rowsUpserted = 1;
+      syncResultData = { ...entity };
     } else {
       // Connector type has no implemented sync adapter
       throw new Error(

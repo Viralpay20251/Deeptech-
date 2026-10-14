@@ -9,6 +9,7 @@
 import { Router, type Request, type Response } from 'express';
 import { query } from '../lib/db.js';
 import { logger } from '../lib/logger.js';
+import { authenticate, requireRole } from '../middleware/auth.js';
 
 export const killSwitchesRouter = Router();
 
@@ -36,70 +37,68 @@ killSwitchesRouter.get('/', async (req: Request, res: Response) => {
   }
 });
 
-killSwitchesRouter.post('/activate', async (req: Request, res: Response) => {
-  const {
-    workspace_id = '00000000-0000-0000-0000-000000000001',
-    scope,
-    scope_id = null,
-    reason,
-  } = req.body;
+killSwitchesRouter.post(
+  '/activate',
+  authenticate,
+  requireRole(['workspace_admin', 'operator']),
+  async (req: Request, res: Response) => {
+    const {
+      workspace_id,
+      scope,
+      scope_id = null,
+      reason,
+    } = req.body;
+    const operatorId = req.user!.id;
+    const targetWorkspaceId = workspace_id || req.user!.workspace_id || '00000000-0000-0000-0000-000000000001';
 
-  if (!scope || !reason) {
-    res.status(400).json({
-      success: false,
-      error: { code: 'VALIDATION_ERROR', message: 'scope and reason are required' },
-    });
-    return;
+    if (!scope || !reason) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'scope and reason are required' },
+      });
+      return;
+    }
+
+    try {
+      const result = await query<{ id: string }>(
+        `INSERT INTO kill_switch_events (workspace_id, scope, scope_id, activated_by_user_id, reason)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id`,
+        [targetWorkspaceId, scope, scope_id, operatorId, reason]
+      );
+
+      logger.warn({ scope, scope_id, reason, operatorId }, '🚨 EMERGENCY KILL SWITCH ACTIVATED');
+
+      res.json({
+        success: true,
+        data: { kill_switch_id: result.rows[0]?.id, scope, reason },
+        message: `Emergency stop activated on ${scope} scope. All matching workflows halted.`,
+      });
+    } catch (err) {
+      res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: (err as Error).message } });
+    }
   }
+);
 
-  // Look up authorized operator in workspace
-  const userRes = await query<{ id: string }>(
-    `SELECT id FROM users WHERE workspace_id = $1 AND role IN ('workspace_admin', 'operator') ORDER BY created_at ASC LIMIT 1`,
-    [workspace_id]
-  );
-  const userId = userRes.rows[0]?.id ?? null;
-  if (!userId) {
-    res.status(401).json({
-      success: false,
-      error: { code: 'OPERATOR_REQUIRED', message: 'No authorized operator found in workspace. Kill switch requires a verified operator identity.' },
-    });
-    return;
+killSwitchesRouter.post(
+  '/:id/deactivate',
+  authenticate,
+  requireRole(['workspace_admin', 'operator']),
+  async (req: Request, res: Response) => {
+    try {
+      await query(
+        `UPDATE kill_switch_events SET deactivated_at = NOW() WHERE id = $1`,
+        [req.params['id']]
+      );
+
+      logger.info({ id: req.params['id'], operatorId: req.user!.id }, 'Emergency kill switch deactivated');
+
+      res.json({
+        success: true,
+        message: 'Kill switch deactivated. Normal bounded operations may resume.',
+      });
+    } catch (err) {
+      res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: (err as Error).message } });
+    }
   }
-
-  try {
-    const result = await query<{ id: string }>(
-      `INSERT INTO kill_switch_events (workspace_id, scope, scope_id, activated_by_user_id, reason)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id`,
-      [workspace_id, scope, scope_id, userId, reason]
-    );
-
-    logger.warn({ scope, scope_id, reason }, '🚨 EMERGENCY KILL SWITCH ACTIVATED');
-
-    res.json({
-      success: true,
-      data: { kill_switch_id: result.rows[0]?.id, scope, reason },
-      message: `Emergency stop activated on ${scope} scope. All matching workflows halted.`,
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: (err as Error).message } });
-  }
-});
-
-killSwitchesRouter.post('/:id/deactivate', async (req: Request, res: Response) => {
-  try {
-    await query(
-      `UPDATE kill_switch_events SET deactivated_at = NOW() WHERE id = $1`,
-      [req.params['id']]
-    );
-
-    logger.info({ id: req.params['id'] }, 'Emergency kill switch deactivated');
-
-    res.json({
-      success: true,
-      message: 'Kill switch deactivated. Normal bounded operations may resume.',
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: (err as Error).message } });
-  }
-});
+);

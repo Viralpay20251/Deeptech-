@@ -9,6 +9,8 @@ import { Router, type Request, type Response } from 'express';
 import { WorkflowOrchestrator } from '../services/workflow-orchestrator.js';
 import { query } from '../lib/db.js';
 
+import { authenticate, requireRole } from '../middleware/auth.js';
+
 export const approvalsRouter = Router();
 
 approvalsRouter.get('/', async (req: Request, res: Response) => {
@@ -40,23 +42,14 @@ approvalsRouter.get('/', async (req: Request, res: Response) => {
   }
 });
 
-approvalsRouter.post('/:id/decide', async (req: Request, res: Response) => {
-  const { decision, notes = '' } = req.body;
-  const workspaceId = (req.query['workspace_id'] as string) ?? '00000000-0000-0000-0000-000000000001';
-  
-  // Look up valid operator user in workspace
-  const userRes = await query<{ id: string }>(
-    `SELECT id FROM users WHERE workspace_id = $1 ORDER BY created_at ASC LIMIT 1`,
-    [workspaceId]
-  );
-  const userId = userRes.rows[0]?.id ?? null;
-  if (!userId) {
-    res.status(401).json({
-      success: false,
-      error: { code: 'OPERATOR_REQUIRED', message: 'No authorized operator found in workspace. Approvals require a verified operator identity.' },
-    });
-    return;
-  }
+approvalsRouter.post(
+  '/:id/decide',
+  authenticate,
+  requireRole(['workspace_admin', 'operator', 'reviewer', 'publisher']),
+  async (req: Request, res: Response) => {
+    const { decision, notes = '' } = req.body;
+    const operatorId = req.user!.id;
+    const workspaceId = req.user!.workspace_id || ((req.query['workspace_id'] as string) ?? '00000000-0000-0000-0000-000000000001');
 
   if (decision !== 'approved' && decision !== 'rejected') {
     res.status(400).json({
@@ -70,7 +63,7 @@ approvalsRouter.post('/:id/decide', async (req: Request, res: Response) => {
     await WorkflowOrchestrator.decideApproval(
       req.params['id'] as string,
       workspaceId,
-      userId,
+      operatorId,
       decision,
       notes
     );

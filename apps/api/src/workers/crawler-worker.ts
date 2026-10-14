@@ -3,35 +3,97 @@
  *
  * Dedicated worker process for executing queued multi-page crawls.
  * Satisfies the requirement:
- * - Separately bounded worker process using durable PostgreSQL queue.
- * - Concurrency control with atomic job claiming.
- * - Graceful shutdown and liveness logging.
+ * - Driven 100% by PostgreSQL durable job_queue (FOR UPDATE SKIP LOCKED).
+ * - Concurrency control with atomic job claiming and lease heartbeats.
+ * - Reconciles crawl results, page snapshots, and SEO findings.
+ * - Graceful shutdown and liveness logging in worker_heartbeats table.
  */
 
 import { query } from '../lib/db.js';
 import { logger } from '../lib/logger.js';
 import { CrawlEngineService } from '../services/crawl-engine.js';
-import { JobQueueService } from '../services/job-queue-service.js';
+import { JobQueueService, type JobRecord } from '../services/job-queue-service.js';
 
 export class CrawlerWorker {
   private static isRunning = false;
   private static pollTimer: NodeJS.Timeout | null = null;
 
   /**
-   * Claim and execute the next pending crawl job
+   * Claim and execute the next pending crawl job from durable job_queue
    */
   public static async processNextJob(): Promise<{
     processed: boolean;
     jobId?: string;
+    crawlJobId?: string;
     pagesCrawled?: number;
     error?: string;
   }> {
     try {
-      // Record idle heartbeat
+      // 1. Record idle heartbeat
       await JobQueueService.recordHeartbeat('vercel_cron', null);
 
-      // 1. Atomically claim next pending job using SKIP LOCKED
-      const claimRes = await query<{ id: string; label: string; max_pages: number }>(
+      // 2. Claim next available 'crawl' job from durable PostgreSQL job_queue
+      const job: JobRecord | null = await JobQueueService.claimNextJob('crawl');
+
+      if (job) {
+        const crawlJobId = (job.payload?.['crawl_job_id'] as string) || job.id;
+        logger.info({ queueJobId: job.id, crawlJobId, attempt: job.attempts }, 'Crawler worker claimed job from durable queue');
+
+        // Start lease heartbeat renewal loop during crawl execution
+        const stopHeartbeat = JobQueueService.startHeartbeatLoop(job.id);
+
+        try {
+          // Update linked crawl_jobs row to 'running'
+          await query(
+            `UPDATE crawl_jobs SET status = 'running', started_at = NOW(), updated_at = NOW() WHERE id = $1`,
+            [crawlJobId]
+          ).catch(() => {});
+
+          // Execute bounded crawl
+          const result = await CrawlEngineService.executeCrawlJob(crawlJobId);
+
+          stopHeartbeat();
+
+          if (result.error) {
+            await JobQueueService.failJob(job.id, result.error);
+            logger.warn({ queueJobId: job.id, crawlJobId, error: result.error }, 'Crawl job failed');
+            return {
+              processed: true,
+              jobId: job.id,
+              crawlJobId,
+              pagesCrawled: result.pagesCrawled,
+              error: result.error,
+            };
+          } else {
+            await JobQueueService.completeJob(job.id, {
+              crawlJobId,
+              pagesCrawled: result.pagesCrawled,
+              completedAt: new Date().toISOString(),
+            });
+            logger.info({ queueJobId: job.id, crawlJobId, pagesCrawled: result.pagesCrawled }, 'Crawl job completed successfully');
+            return {
+              processed: true,
+              jobId: job.id,
+              crawlJobId,
+              pagesCrawled: result.pagesCrawled,
+            };
+          }
+        } catch (execErr) {
+          stopHeartbeat();
+          const errMsg = (execErr as Error).message;
+          await JobQueueService.failJob(job.id, errMsg);
+          logger.error({ queueJobId: job.id, err: errMsg }, 'Crawl execution threw error');
+          return {
+            processed: true,
+            jobId: job.id,
+            crawlJobId,
+            error: errMsg,
+          };
+        }
+      }
+
+      // 3. Fallback: check for any pending crawl_jobs that were not yet in job_queue
+      const pendingLegacy = await query<{ id: string; workspace_id: string; brand_id: string | null; label: string; seed_urls: string[]; profile: string; max_pages: number }>(
         `UPDATE crawl_jobs
          SET status = 'running', started_at = NOW(), updated_at = NOW()
          WHERE id = (
@@ -41,28 +103,22 @@ export class CrawlerWorker {
            LIMIT 1
            FOR UPDATE SKIP LOCKED
          )
-         RETURNING id, label, max_pages`
+         RETURNING id, workspace_id, brand_id, label, seed_urls, profile, max_pages`
       );
 
-      if (!claimRes.rows.length || !claimRes.rows[0]) {
-        return { processed: false };
+      if (pendingLegacy.rows.length && pendingLegacy.rows[0]) {
+        const legacy = pendingLegacy.rows[0];
+        logger.info({ crawlJobId: legacy.id }, 'Processing pending crawl_job from legacy table');
+        const result = await CrawlEngineService.executeCrawlJob(legacy.id);
+        return {
+          processed: true,
+          crawlJobId: legacy.id,
+          pagesCrawled: result.pagesCrawled,
+          error: result.error,
+        };
       }
 
-      const job = claimRes.rows[0];
-      await JobQueueService.recordHeartbeat('vercel_cron', job.id);
-      logger.info({ jobId: job.id, label: job.label, maxPages: job.max_pages }, 'Crawler worker claimed pending job');
-
-      // 2. Execute bounded crawl
-      const result = await CrawlEngineService.executeCrawlJob(job.id);
-      await JobQueueService.recordHeartbeat('vercel_cron', null);
-      logger.info({ jobId: job.id, pagesCrawled: result.pagesCrawled, error: result.error }, 'Crawler worker completed job');
-
-      return {
-        processed: true,
-        jobId: job.id,
-        pagesCrawled: result.pagesCrawled,
-        error: result.error,
-      };
+      return { processed: false };
     } catch (err) {
       logger.error({ err: (err as Error).message }, 'Crawler worker execution error');
       return { processed: false, error: (err as Error).message };
@@ -70,9 +126,9 @@ export class CrawlerWorker {
   }
 
   /**
-   * Start polling loop for continuous worker execution
+   * Start polling loop for continuous worker execution (daemon mode)
    */
-  public static start(intervalMs = 5000) {
+  public static start(intervalMs = 3000) {
     if (this.isRunning) return;
     this.isRunning = true;
     logger.info({ intervalMs }, 'Starting Crawler Worker daemon loop');
@@ -81,7 +137,7 @@ export class CrawlerWorker {
       if (!this.isRunning) return;
       try {
         const res = await this.processNextJob();
-        // If a job was processed, immediately look for another before waiting
+        // If a job was processed, immediately check for another
         if (res.processed) {
           setImmediate(tick);
           return;

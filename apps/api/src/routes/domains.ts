@@ -11,6 +11,7 @@
 import { Router, type Request, type Response } from 'express';
 import { DomainRegistryService } from '../services/domain-registry-service.js';
 import { logger } from '../lib/logger.js';
+import { authenticate, requireRole } from '../middleware/auth.js';
 
 export const domainsRouter = Router();
 
@@ -207,68 +208,74 @@ domainsRouter.get('/:hostname', async (req: Request, res: Response) => {
 });
 
 // ─── PATCH /api/v1/domains/:hostname ──────────────────────────────────────────
-domainsRouter.patch('/:hostname', async (req: Request, res: Response) => {
-  const hostname = req.params['hostname'] as string;
-  if (!hostname) {
-    res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Hostname required' } });
-    return;
+domainsRouter.patch(
+  '/:hostname',
+  authenticate,
+  requireRole(['workspace_admin', 'operator']),
+  async (req: Request, res: Response) => {
+    const hostname = req.params['hostname'] as string;
+    if (!hostname) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Hostname required' } });
+      return;
+    }
+
+    const {
+      host_role,
+      intended_canonical_host,
+      canonical_policy_source,
+      indexing_intent,
+      allowed_for_crawling,
+      allowed_for_content_analysis,
+      allowed_for_index_submission,
+      notes,
+      confirmed_by_operator,
+    } = req.body as {
+      host_role?: string;
+      intended_canonical_host?: string | null;
+      canonical_policy_source?: string | null;
+      indexing_intent?: string;
+      allowed_for_crawling?: boolean;
+      allowed_for_content_analysis?: boolean;
+      allowed_for_index_submission?: boolean;
+      notes?: string;
+      confirmed_by_operator?: boolean;
+    };
+
+    // Use server-authenticated operator identity — never trust client-supplied operator_id
+    const operatorId = req.user!.id;
+
+    try {
+      const updated = await DomainRegistryService.updateDomain(
+        hostname,
+        {
+          hostRole: host_role,
+          intendedCanonicalHost: intended_canonical_host,
+          canonicalPolicySource: canonical_policy_source,
+          indexingIntent: indexing_intent,
+          allowedForCrawling: allowed_for_crawling,
+          allowedForContentAnalysis: allowed_for_content_analysis,
+          allowedForIndexSubmission: allowed_for_index_submission,
+          notes,
+          confirmedByOperator: confirmed_by_operator,
+        },
+        operatorId
+      );
+
+      res.json({
+        success: true,
+        data: updated,
+        message: `Domain ${hostname} updated with operator confirmation and audit logging.`,
+      });
+    } catch (err) {
+      const msg = (err as Error).message;
+      const isPolicyViolation = msg.includes('CRITICAL POLICY VIOLATION') || msg.includes('Operator confirmation required');
+      res.status(isPolicyViolation ? 403 : 500).json({
+        success: false,
+        error: {
+          code: isPolicyViolation ? 'POLICY_VIOLATION' : 'UPDATE_FAILED',
+          message: msg,
+        },
+      });
+    }
   }
-
-  const {
-    host_role,
-    intended_canonical_host,
-    canonical_policy_source,
-    indexing_intent,
-    allowed_for_crawling,
-    allowed_for_content_analysis,
-    allowed_for_index_submission,
-    notes,
-    confirmed_by_operator,
-    operator_id,
-  } = req.body as {
-    host_role?: string;
-    intended_canonical_host?: string | null;
-    canonical_policy_source?: string | null;
-    indexing_intent?: string;
-    allowed_for_crawling?: boolean;
-    allowed_for_content_analysis?: boolean;
-    allowed_for_index_submission?: boolean;
-    notes?: string;
-    confirmed_by_operator?: boolean;
-    operator_id?: string;
-  };
-
-  try {
-    const updated = await DomainRegistryService.updateDomain(
-      hostname,
-      {
-        hostRole: host_role,
-        intendedCanonicalHost: intended_canonical_host,
-        canonicalPolicySource: canonical_policy_source,
-        indexingIntent: indexing_intent,
-        allowedForCrawling: allowed_for_crawling,
-        allowedForContentAnalysis: allowed_for_content_analysis,
-        allowedForIndexSubmission: allowed_for_index_submission,
-        notes,
-        confirmedByOperator: confirmed_by_operator,
-      },
-      operator_id || 'operator_web'
-    );
-
-    res.json({
-      success: true,
-      data: updated,
-      message: `Domain ${hostname} updated with operator confirmation and audit logging.`,
-    });
-  } catch (err) {
-    const msg = (err as Error).message;
-    const isPolicyViolation = msg.includes('CRITICAL POLICY VIOLATION') || msg.includes('Operator confirmation required');
-    res.status(isPolicyViolation ? 403 : 500).json({
-      success: false,
-      error: {
-        code: isPolicyViolation ? 'POLICY_VIOLATION' : 'UPDATE_FAILED',
-        message: msg,
-      },
-    });
-  }
-});
+);

@@ -15,6 +15,7 @@
 import { Router, type Request, type Response } from 'express';
 import { query } from '../lib/db.js';
 import { MetaStudioService, type MetaStudioGenerateInput } from '../services/meta-studio-service.js';
+import { authenticate, requireRole } from '../middleware/auth.js';
 
 export const metaStudioRouter = Router();
 
@@ -242,46 +243,50 @@ metaStudioRouter.get('/proposals', async (req: Request, res: Response) => {
 });
 
 // ─── POST /proposals/:id/decide ───────────────────────────────────────────────
-metaStudioRouter.post('/proposals/:id/decide', async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const { decision, notes, operator_id, override_grounding_warnings } = req.body as {
-    decision?: 'approved' | 'rejected';
-    notes?: string;
-    operator_id?: string;
-    override_grounding_warnings?: boolean;
-  };
-  const workspaceId: string =
-    typeof req.body?.workspace_id === 'string'
-      ? req.body.workspace_id
-      : typeof req.headers['x-workspace-id'] === 'string'
-      ? req.headers['x-workspace-id']
-      : typeof req.query['workspace_id'] === 'string'
-      ? (req.query['workspace_id'] as string)
-      : '00000000-0000-0000-0000-000000000001';
+metaStudioRouter.post(
+  '/proposals/:id/decide',
+  authenticate,
+  requireRole(['workspace_admin', 'operator', 'reviewer']),
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { decision, notes, override_grounding_warnings } = req.body as {
+      decision?: 'approved' | 'rejected';
+      notes?: string;
+      override_grounding_warnings?: boolean;
+    };
+    const operatorId = req.user!.id;
+    const workspaceId: string =
+      typeof req.body?.workspace_id === 'string'
+        ? req.body.workspace_id
+        : typeof req.headers['x-workspace-id'] === 'string'
+        ? req.headers['x-workspace-id']
+        : typeof req.query['workspace_id'] === 'string'
+        ? (req.query['workspace_id'] as string)
+        : req.user!.workspace_id || '00000000-0000-0000-0000-000000000001';
 
-  if (!id) {
-    res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Proposal ID is required' } });
-    return;
-  }
+    if (!id) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Proposal ID is required' } });
+      return;
+    }
 
-  if (!decision || !['approved', 'rejected'].includes(decision)) {
-    res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'decision must be approved or rejected' } });
-    return;
-  }
+    if (!decision || !['approved', 'rejected'].includes(decision)) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'decision must be approved or rejected' } });
+      return;
+    }
 
-  try {
-    const result = await MetaStudioService.decideProposal({
-      proposalId: String(id),
-      workspaceId,
-      operatorId: operator_id,
-      decision,
-      notes,
-      overrideGroundingWarnings: Boolean(override_grounding_warnings),
-    });
+    try {
+      const result = await MetaStudioService.decideProposal({
+        proposalId: String(id),
+        workspaceId,
+        operatorId,
+        decision,
+        notes,
+        overrideGroundingWarnings: Boolean(override_grounding_warnings),
+      });
 
-    res.json({
-      success: true,
-      message: `Metadata proposal ${id} marked as ${decision} with verified tenant and operator authorization.`,
+      res.json({
+        success: true,
+        message: `Metadata proposal ${id} marked as ${decision} with verified tenant and operator authorization.`,
       data: result.proposal,
     });
   } catch (err: any) {

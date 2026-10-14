@@ -6,12 +6,33 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { Server } from 'http';
 import { app } from '../../apps/api/src/index.js';
+import { query } from '../../apps/api/src/lib/db.js';
 
 describe('Meta Tags Studio V3 API Integration', () => {
   let server: Server;
   let baseUrl: string;
+  let authHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
 
   beforeAll(async () => {
+    // Look up or ensure an operator in workspace
+    const userRes = await query<{ id: string }>(
+      `SELECT id FROM users WHERE role IN ('workspace_admin', 'operator', 'reviewer') LIMIT 1`
+    );
+    let opId = userRes.rows[0]?.id;
+    if (!opId) {
+      const ins = await query<{ id: string }>(
+        `INSERT INTO users (id, workspace_id, email, display_name, password_hash, role)
+         VALUES ('c4344661-4a88-46a9-b85d-c65303c37227', '00000000-0000-0000-0000-000000000001', 'operator@growth-os.internal', 'Test Operator', 'hash', 'workspace_admin')
+         ON CONFLICT (id) DO NOTHING
+         RETURNING id`
+      );
+      opId = ins.rows[0]?.id || 'c4344661-4a88-46a9-b85d-c65303c37227';
+    }
+    authHeaders = {
+      'Content-Type': 'application/json',
+      'x-operator-id': opId,
+    };
+
     await new Promise<void>((resolve) => {
       server = app.listen(0, () => {
         const address = server.address();
@@ -163,7 +184,7 @@ describe('Meta Tags Studio V3 API Integration', () => {
     // 3. Approve proposal
     const decideRes = await fetch(`${baseUrl}/api/v1/meta-studio/proposals/${proposalId}/decide`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         decision: 'approved',
         notes: 'Verified against brand guidelines and SEO standards.',
@@ -178,7 +199,7 @@ describe('Meta Tags Studio V3 API Integration', () => {
     // 4. P0 Tenant Isolation: An unauthorized workspace cannot decide this proposal
     const rogueWsRes = await fetch(`${baseUrl}/api/v1/meta-studio/proposals/${proposalId}/decide`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         workspace_id: '00000000-0000-0000-0000-000000000002', // different workspace
         decision: 'rejected',
@@ -191,7 +212,7 @@ describe('Meta Tags Studio V3 API Integration', () => {
     // 5. P0 Proposal State Validation: Cannot re-decide an already approved proposal
     const reDecideRes = await fetch(`${baseUrl}/api/v1/meta-studio/proposals/${proposalId}/decide`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         workspace_id: workspaceId,
         decision: 'rejected',
@@ -242,7 +263,7 @@ describe('Meta Tags Studio V3 API Integration', () => {
     // Try to approve without override -> blocked with 422
     const blockedRes = await fetch(`${baseUrl}/api/v1/meta-studio/proposals/${proposalId}/decide`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         workspace_id: workspaceId,
         decision: 'approved',
@@ -257,7 +278,7 @@ describe('Meta Tags Studio V3 API Integration', () => {
     // Approve WITH explicit operator override -> succeeds with 200
     const overrideRes = await fetch(`${baseUrl}/api/v1/meta-studio/proposals/${proposalId}/decide`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         workspace_id: workspaceId,
         decision: 'approved',

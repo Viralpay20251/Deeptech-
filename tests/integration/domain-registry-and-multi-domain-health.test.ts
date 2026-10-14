@@ -22,8 +22,28 @@ import { assertSafeOutboundUrlAsync, SafetyViolationError } from '../../apps/api
 describe('Multi-Domain Registry & Health Matrix Integration', () => {
   let server: Server;
   let baseUrl: string;
+  let authHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
 
   beforeAll(async () => {
+    // Look up or ensure an operator in workspace
+    const userRes = await query<{ id: string }>(
+      `SELECT id FROM users WHERE role IN ('workspace_admin', 'operator') LIMIT 1`
+    );
+    let opId = userRes.rows[0]?.id;
+    if (!opId) {
+      const ins = await query<{ id: string }>(
+        `INSERT INTO users (id, workspace_id, email, display_name, password_hash, role)
+         VALUES ('c4344661-4a88-46a9-b85d-c65303c37227', '00000000-0000-0000-0000-000000000001', 'operator@growth-os.internal', 'Test Operator', 'hash', 'workspace_admin')
+         ON CONFLICT (id) DO NOTHING
+         RETURNING id`
+      );
+      opId = ins.rows[0]?.id || 'c4344661-4a88-46a9-b85d-c65303c37227';
+    }
+    authHeaders = {
+      'Content-Type': 'application/json',
+      'x-operator-id': opId,
+    };
+
     await new Promise<void>((resolve) => {
       server = app.listen(0, () => {
         const address = server.address();
@@ -119,7 +139,7 @@ describe('Multi-Domain Registry & Health Matrix Integration', () => {
     // Attempting to consolidate or cross-redirect employer to employers must be blocked
     const patchRes = await fetch(`${baseUrl}/api/v1/domains/employer.talentxcel.in`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         intended_canonical_host: 'employers.talentxcel.in',
         confirmed_by_operator: true,
@@ -147,7 +167,7 @@ describe('Multi-Domain Registry & Health Matrix Integration', () => {
       // Attempting to enable crawling on excluded legacy origins must be rejected
       const patchRes = await fetch(`${baseUrl}/api/v1/domains/${host}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({
           allowed_for_crawling: true,
           confirmed_by_operator: true,
@@ -166,7 +186,7 @@ describe('Multi-Domain Registry & Health Matrix Integration', () => {
     // 1. Without operator confirmation -> rejected with 403
     const unconfirmedRes = await fetch(`${baseUrl}/api/v1/domains/colleges.talentxcel.in`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         indexing_intent: 'noindex_expected',
         confirmed_by_operator: false,
@@ -180,11 +200,10 @@ describe('Multi-Domain Registry & Health Matrix Integration', () => {
     // 2. With operator confirmation -> succeeded with audit log
     const confirmedRes = await fetch(`${baseUrl}/api/v1/domains/colleges.talentxcel.in`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         indexing_intent: 'noindex_expected',
         confirmed_by_operator: true,
-        operator_id: 'test_operator_42',
       }),
     });
 
