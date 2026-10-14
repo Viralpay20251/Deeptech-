@@ -20,7 +20,20 @@ describe('Production Truthfulness & No-Mock Policy', () => {
   let server: Server;
   let baseUrl: string;
 
+  const authHeaders = {
+    'Content-Type': 'application/json',
+    'x-operator-id': 'c4344661-4a88-46a9-b85d-c65303c37227',
+    'x-service-key': process.env['INTERNAL_WORKSPACE_SECRET'] || 'growth_os_internal_session_secret_32_characters_minimum!',
+  };
+
   beforeAll(async () => {
+    const { query } = await import('../../apps/api/src/lib/db.js');
+    await query(
+      `INSERT INTO users (id, workspace_id, email, display_name, password_hash, role)
+       VALUES ('c4344661-4a88-46a9-b85d-c65303c37227', '00000000-0000-0000-0000-000000000001', 'operator@growth-os.internal', 'Test Operator', 'hash', 'workspace_admin')
+       ON CONFLICT (id) DO UPDATE SET role = 'workspace_admin'`
+    ).catch(() => {});
+
     await new Promise<void>((resolve) => {
       server = app.listen(0, () => {
         const address = server.address();
@@ -107,7 +120,7 @@ describe('Production Truthfulness & No-Mock Policy', () => {
     it('rejects unsupported connector type with 500 error instead of fabricating rows_fetched=1', async () => {
       const res = await fetch(`${baseUrl}/api/v1/connectors/sync`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({
           connector_type: 'unsupported_test_provider',
           workspace_id: '00000000-0000-0000-0000-000000000001',
@@ -124,7 +137,7 @@ describe('Production Truthfulness & No-Mock Policy', () => {
     it('rejects OAuth connectors in /sync without credentials rather than reporting fake sync', async () => {
       const res = await fetch(`${baseUrl}/api/v1/connectors/sync`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({
           connector_type: 'google_search_console',
           workspace_id: '00000000-0000-0000-0000-000000000001',

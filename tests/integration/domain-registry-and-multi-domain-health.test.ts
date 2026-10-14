@@ -42,6 +42,7 @@ describe('Multi-Domain Registry & Health Matrix Integration', () => {
     authHeaders = {
       'Content-Type': 'application/json',
       'x-operator-id': opId,
+      'x-service-key': process.env['INTERNAL_WORKSPACE_SECRET'] || 'growth_os_internal_session_secret_32_characters_minimum!',
     };
 
     await new Promise<void>((resolve) => {
@@ -62,7 +63,7 @@ describe('Multi-Domain Registry & Health Matrix Integration', () => {
   });
 
   it('1. GET /api/v1/domains returns all 26 authoritative hostnames plus 3 excluded legacy references (total 29)', async () => {
-    const res = await fetch(`${baseUrl}/api/v1/domains`);
+    const res = await fetch(`${baseUrl}/api/v1/domains`, { headers: authHeaders });
     expect(res.status).toBe(200);
     const json = (await res.json()) as any;
 
@@ -124,13 +125,13 @@ describe('Multi-Domain Registry & Health Matrix Integration', () => {
   });
 
   it('2. Strictly preserves distinctness of employer.talentxcel.in vs employers.talentxcel.in', async () => {
-    const resSingular = await fetch(`${baseUrl}/api/v1/domains/employer.talentxcel.in`);
+    const resSingular = await fetch(`${baseUrl}/api/v1/domains/employer.talentxcel.in`, { headers: authHeaders });
     expect(resSingular.status).toBe(200);
     const singularData = (await resSingular.json()) as any;
     expect(singularData.data.hostname).toBe('employer.talentxcel.in');
     expect(singularData.data.host_role).toBe('product_subdomain');
 
-    const resPlural = await fetch(`${baseUrl}/api/v1/domains/employers.talentxcel.in`);
+    const resPlural = await fetch(`${baseUrl}/api/v1/domains/employers.talentxcel.in`, { headers: authHeaders });
     expect(resPlural.status).toBe(200);
     const pluralData = (await resPlural.json()) as any;
     expect(pluralData.data.hostname).toBe('employers.talentxcel.in');
@@ -157,7 +158,7 @@ describe('Multi-Domain Registry & Health Matrix Integration', () => {
     const excludedHosts = ['auth.talentxcel.in', 'cdn.talentxcel.in', 'www.talentxcel.net'];
 
     for (const host of excludedHosts) {
-      const res = await fetch(`${baseUrl}/api/v1/domains/${host}`);
+      const res = await fetch(`${baseUrl}/api/v1/domains/${host}`, { headers: authHeaders });
       expect(res.status).toBe(200);
       const json = (await res.json()) as any;
       expect(json.data.host_role).toBe('excluded');
@@ -232,7 +233,7 @@ describe('Multi-Domain Registry & Health Matrix Integration', () => {
   it('5. POST /api/v1/domains/check-health executes multi-dimensional audit on a target domain', async () => {
     const res = await fetch(`${baseUrl}/api/v1/domains/check-health`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         hostname: 'talentxcel.in',
       }),
@@ -252,7 +253,7 @@ describe('Multi-Domain Registry & Health Matrix Integration', () => {
   });
 
   it('6. GET /api/v1/domains/summary aggregates multi-domain health matrix metrics', async () => {
-    const res = await fetch(`${baseUrl}/api/v1/domains/summary`);
+    const res = await fetch(`${baseUrl}/api/v1/domains/summary`, { headers: authHeaders });
     expect(res.status).toBe(200);
     const json = (await res.json()) as any;
 

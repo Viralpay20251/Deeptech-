@@ -36,7 +36,7 @@ connectorsRouter.get('/definitions', async (_req: Request, res: Response) => {
 
 // ─── GET /instances ────────────────────────────────────────────────────────────
 connectorsRouter.get('/instances', async (req: Request, res: Response) => {
-  const workspaceId = (req.query['workspace_id'] as string) ?? '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || (req.query['workspace_id'] as string);
   try {
     const result = await query(
       `SELECT DISTINCT ON (ci.connector_type)
@@ -79,7 +79,7 @@ connectorsRouter.post('/health-check', async (req: Request, res: Response) => {
     return;
   }
 
-  const workspaceId = workspace_id ?? '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || workspace_id;
 
   try {
     // Dimension 1: config
@@ -316,7 +316,7 @@ connectorsRouter.post('/login-direct', async (req: Request, res: Response) => {
     return;
   }
 
-  const workspaceId = workspace_id ?? '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || workspace_id;
 
   try {
     const providerMap: Record<string, string> = {
@@ -458,7 +458,7 @@ connectorsRouter.post('/disconnect', async (req: Request, res: Response) => {
     return;
   }
 
-  const workspaceId = workspace_id ?? '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || workspace_id;
 
   try {
     await query(
@@ -507,7 +507,7 @@ connectorsRouter.post('/sync', async (req: Request, res: Response) => {
     return;
   }
 
-  const workspaceId = workspace_id ?? '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || workspace_id;
 
   // 1. Create run record in connector_sync_runs
   const runInsert = await query<{ id: string }>(
@@ -623,7 +623,7 @@ connectorsRouter.post('/sync', async (req: Request, res: Response) => {
 
 // ─── GET /sync-runs ───────────────────────────────────────────────────────────
 connectorsRouter.get('/sync-runs', async (req: Request, res: Response) => {
-  const workspaceId = (req.query['workspace_id'] as string) ?? '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || (req.query['workspace_id'] as string);
   const connectorType = req.query['connector_type'] as string | undefined;
 
   try {

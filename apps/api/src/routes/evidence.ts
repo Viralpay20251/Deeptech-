@@ -41,7 +41,7 @@ evidenceRouter.post('/register', async (req: Request, res: Response) => {
     return;
   }
 
-  const workspaceId = workspace_id || '00000000-0000-0000-0000-000000000001';
+  const workspaceId = (req.user?.workspace_id || workspace_id) as string;
 
   try {
     const input: RegisterEvidenceInput = {
@@ -65,7 +65,7 @@ evidenceRouter.post('/register', async (req: Request, res: Response) => {
 
 // ─── GET / ────────────────────────────────────────────────────────────────────
 evidenceRouter.get('/', async (req: Request, res: Response) => {
-  const workspaceId = (req.query['workspace_id'] as string) || '00000000-0000-0000-0000-000000000001';
+  const workspaceId = (req.user?.workspace_id || (req.query['workspace_id'] as string)) as string;
 
   try {
     const records = await EvidenceService.listEvidence(workspaceId);
@@ -88,7 +88,7 @@ evidenceRouter.post('/audit-claims', async (req: Request, res: Response) => {
     return;
   }
 
-  const workspaceId = workspace_id || '00000000-0000-0000-0000-000000000001';
+  const workspaceId = (req.user?.workspace_id || workspace_id) as string;
 
   try {
     const auditResult = await EvidenceService.auditClaims(text, workspaceId, citation_urls || []);

@@ -11,7 +11,20 @@ describe('Redirect Router API Integration', () => {
   let server: Server;
   let baseUrl: string;
 
+  const authHeaders = {
+    'Content-Type': 'application/json',
+    'x-operator-id': 'c4344661-4a88-46a9-b85d-c65303c37227',
+    'x-service-key': process.env['INTERNAL_WORKSPACE_SECRET'] || 'growth_os_internal_session_secret_32_characters_minimum!',
+  };
+
   beforeAll(async () => {
+    const { query } = await import('../../apps/api/src/lib/db.js');
+    await query(
+      `INSERT INTO users (id, workspace_id, email, display_name, password_hash, role)
+       VALUES ('c4344661-4a88-46a9-b85d-c65303c37227', '00000000-0000-0000-0000-000000000001', 'operator@growth-os.internal', 'Test Operator', 'hash', 'workspace_admin')
+       ON CONFLICT (id) DO UPDATE SET role = 'workspace_admin'`
+    ).catch(() => {});
+
     await new Promise<void>((resolve) => {
       server = app.listen(0, () => {
         const address = server.address();
@@ -40,7 +53,7 @@ describe('Redirect Router API Integration', () => {
     // 1. Create a tracked link pointing to CHATR
     const createRes = await fetch(`${baseUrl}/api/v1/tracked-links`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         brand_id: '00000000-0000-0000-0001-000000000001', // CHATR brand ID
         target_url: 'https://chatr.chat',
@@ -78,7 +91,8 @@ describe('Redirect Router API Integration', () => {
 
     // 3. List tracked links to verify recorded click
     const listRes = await fetch(
-      `${baseUrl}/api/v1/tracked-links?brand_id=00000000-0000-0000-0001-000000000001`
+      `${baseUrl}/api/v1/tracked-links?brand_id=00000000-0000-0000-0001-000000000001`,
+      { headers: authHeaders }
     );
     expect(listRes.status).toBe(200);
     const listData = (await listRes.json()) as { success: boolean; data: Array<{ short_code: string; clicks_total: number }> };

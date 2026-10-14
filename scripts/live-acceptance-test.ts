@@ -57,12 +57,15 @@ async function runLiveAcceptanceTest() {
 
     // 3. Post authenticated crawl job creation
     console.log('\nStep 3: Submitting authenticated POST /api/v1/crawler/jobs to enqueue crawl job...');
+    const authHeaders = {
+      'Content-Type': 'application/json',
+      'x-operator-id': operator.id,
+      'x-service-key': process.env['INTERNAL_WORKSPACE_SECRET'] || 'growth_os_internal_session_secret_32_characters_minimum!',
+    };
+
     const createRes = await fetch(`${baseUrl}/api/v1/crawler/jobs`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-operator-id': operator.id,
-      },
+      headers: authHeaders,
       body: JSON.stringify({
         label: 'Live Acceptance Test: CHATR Crawl',
         seed_urls: ['https://chatr.chat'],
@@ -144,7 +147,9 @@ async function runLiveAcceptanceTest() {
 
     // 9. Verify crawl job summary API endpoint
     console.log('\nStep 9: Testing GET /api/v1/crawler/jobs/:id...');
-    const getJobRes = await fetch(`${baseUrl}/api/v1/crawler/jobs/${crawlJobId}`);
+    const getJobRes = await fetch(`${baseUrl}/api/v1/crawler/jobs/${crawlJobId}`, {
+      headers: authHeaders,
+    });
     const getJobBody = (await getJobRes.json()) as any;
     console.log(`✅ GET job summary response: status=${getJobBody.data.status}, snapshots_recorded=${getJobBody.data.snapshots_recorded}`);
 

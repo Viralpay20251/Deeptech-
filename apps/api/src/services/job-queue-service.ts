@@ -217,6 +217,13 @@ export class JobQueueService {
   }
 
   /**
+   * Alias for recoverAbandonedJobs for lease recovery semantics
+   */
+  static async recoverExpiredLeases(): Promise<number> {
+    return this.recoverAbandonedJobs();
+  }
+
+  /**
    * Get job status by ID.
    */
   static async getJob(jobId: string): Promise<JobRecord | null> {

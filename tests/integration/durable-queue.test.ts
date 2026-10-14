@@ -23,7 +23,19 @@ describe('Durable PostgreSQL Job Queue Integration', () => {
   let server: Server;
   let baseUrl: string;
 
+  const authHeaders = {
+    'Content-Type': 'application/json',
+    'x-operator-id': 'c4344661-4a88-46a9-b85d-c65303c37227',
+    'x-service-key': process.env['INTERNAL_WORKSPACE_SECRET'] || 'growth_os_internal_session_secret_32_characters_minimum!',
+  };
+
   beforeAll(async () => {
+    await query(
+      `INSERT INTO users (id, workspace_id, email, display_name, password_hash, role)
+       VALUES ('c4344661-4a88-46a9-b85d-c65303c37227', '00000000-0000-0000-0000-000000000001', 'operator@growth-os.internal', 'Test Operator', 'hash', 'workspace_admin')
+       ON CONFLICT (id) DO UPDATE SET role = 'workspace_admin'`
+    ).catch(() => {});
+
     await new Promise<void>((resolve) => {
       server = app.listen(0, () => {
         const address = server.address();
@@ -141,7 +153,7 @@ describe('Durable PostgreSQL Job Queue Integration', () => {
   it('6. GET /api/v1/queue/metrics reports queue depth and worker heartbeat', async () => {
     await JobQueueService.recordHeartbeat('local_dev', null);
 
-    const res = await fetch(`${baseUrl}/api/v1/queue/metrics`);
+    const res = await fetch(`${baseUrl}/api/v1/queue/metrics`, { headers: authHeaders });
     expect(res.status).toBe(200);
     const json = await res.json() as any;
 
@@ -154,7 +166,7 @@ describe('Durable PostgreSQL Job Queue Integration', () => {
   });
 
   it('7. GET /api/v1/queue/jobs lists jobs scoped to workspace', async () => {
-    const res = await fetch(`${baseUrl}/api/v1/queue/jobs?workspace_id=${workspaceId}`);
+    const res = await fetch(`${baseUrl}/api/v1/queue/jobs?workspace_id=${workspaceId}`, { headers: authHeaders });
     expect(res.status).toBe(200);
     const json = await res.json() as any;
 

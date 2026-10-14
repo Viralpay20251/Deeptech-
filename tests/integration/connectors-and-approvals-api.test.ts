@@ -10,7 +10,20 @@ describe('Connectors & Approvals Integration', () => {
   let server: Server;
   let baseUrl: string;
 
+  const authHeaders = {
+    'Content-Type': 'application/json',
+    'x-operator-id': 'c4344661-4a88-46a9-b85d-c65303c37227',
+    'x-service-key': process.env['INTERNAL_WORKSPACE_SECRET'] || 'growth_os_internal_session_secret_32_characters_minimum!',
+  };
+
   beforeAll(async () => {
+    const { query } = await import('../../apps/api/src/lib/db.js');
+    await query(
+      `INSERT INTO users (id, workspace_id, email, display_name, password_hash, role)
+       VALUES ('c4344661-4a88-46a9-b85d-c65303c37227', '00000000-0000-0000-0000-000000000001', 'operator@growth-os.internal', 'Test Operator', 'hash', 'workspace_admin')
+       ON CONFLICT (id) DO UPDATE SET role = 'workspace_admin'`
+    ).catch(() => {});
+
     await new Promise<void>((resolve) => {
       server = app.listen(0, () => {
         const address = server.address();
@@ -29,7 +42,7 @@ describe('Connectors & Approvals Integration', () => {
   });
 
   it('lists connector instances including core search, analytics and social connectors', async () => {
-    const res = await fetch(`${baseUrl}/api/v1/connectors/instances`);
+    const res = await fetch(`${baseUrl}/api/v1/connectors/instances`, { headers: authHeaders });
     expect(res.status).toBe(200);
     const json = (await res.json()) as { success: boolean; data: Array<{ connector_type: string; status: string }> };
     expect(json.success).toBe(true);
@@ -43,7 +56,7 @@ describe('Connectors & Approvals Integration', () => {
   it('connects a connector directly via login-direct endpoint', async () => {
     const res = await fetch(`${baseUrl}/api/v1/connectors/login-direct`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         connector_type: 'linkedin',
         access_token: 'test_operator_token_123',
@@ -56,7 +69,7 @@ describe('Connectors & Approvals Integration', () => {
     expect(json.status).toBe('connected');
 
     // Verify it now reflects as connected in instances
-    const listRes = await fetch(`${baseUrl}/api/v1/connectors/instances`);
+    const listRes = await fetch(`${baseUrl}/api/v1/connectors/instances`, { headers: authHeaders });
     const listJson = (await listRes.json()) as { data: Array<{ connector_type: string; status: string }> };
     const linkedin = listJson.data.find((c) => c.connector_type === 'linkedin');
     expect(linkedin?.status).toBe('connected');
@@ -65,7 +78,7 @@ describe('Connectors & Approvals Integration', () => {
   it('disconnects a connector cleanly', async () => {
     const res = await fetch(`${baseUrl}/api/v1/connectors/disconnect`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         connector_type: 'linkedin',
       }),
@@ -80,7 +93,7 @@ describe('Connectors & Approvals Integration', () => {
   it('returns valid validation error when connector_type is missing in login-direct', async () => {
     const res = await fetch(`${baseUrl}/api/v1/connectors/login-direct`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({}),
     });
 

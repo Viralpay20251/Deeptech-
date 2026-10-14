@@ -29,6 +29,7 @@ import { metaStudioRouter } from './routes/meta-studio.js';
 import { evidenceRouter } from './routes/evidence.js';
 import { domainsRouter } from './routes/domains.js';
 import { queueRouter } from './routes/queue.js';
+import { authenticate, requireWorkspaceScope } from './middleware/auth.js';
 
 const app = express();
 
@@ -62,6 +63,29 @@ app.use(limiter);
 app.use(redirectsRouter); // Handles GET /r/:short_code
 app.use(publicPagesRouter); // Handles GET /p/:slug, /sitemap.xml, /robots.txt
 app.use('/health', healthRouter);
+
+// ─── Global Authentication & Workspace Scoping Gate for /api/v1 ──────────────
+// Excludes only:
+// 1. /api/v1/auth/google/* (OAuth authorization initiation & callback)
+// 2. /api/v1/crawler/worker/process-next (Protected by CRON_SECRET)
+// 3. /api/v1/pages/sitemap.xml, /api/v1/pages/robots.txt, /api/v1/pages/p/* (Public SEO mirrors)
+app.use('/api/v1', (req, res, next) => {
+  const isPublic =
+    req.path.startsWith('/auth/google') ||
+    req.path === '/crawler/worker/process-next' ||
+    req.path === '/pages/sitemap.xml' ||
+    req.path === '/pages/robots.txt' ||
+    req.path.startsWith('/pages/p/');
+
+  if (isPublic) {
+    return next();
+  }
+
+  return authenticate(req, res, (authErr) => {
+    if (authErr) return next(authErr);
+    return requireWorkspaceScope(req, res, next);
+  });
+});
 app.use('/api/v1/brands', brandsRouter);
 app.use('/api/v1/connectors', connectorsRouter);
 app.use('/api/v1/demand', demandRouter);

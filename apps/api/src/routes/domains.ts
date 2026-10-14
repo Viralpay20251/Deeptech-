@@ -20,7 +20,7 @@ domainsRouter.get('/', async (req: Request, res: Response) => {
   const brandId = req.query['brand_id'] as string | undefined;
   const hostRole = req.query['host_role'] as string | undefined;
   const verificationState = req.query['verification_state'] as string | undefined;
-  const workspaceId = (req.query['workspace_id'] as string) ?? '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || (req.query['workspace_id'] as string);
 
   try {
     const domains = await DomainRegistryService.listDomains({
@@ -49,7 +49,7 @@ domainsRouter.get('/', async (req: Request, res: Response) => {
 
 // ─── GET /api/v1/domains/summary ─────────────────────────────────────────────
 domainsRouter.get('/summary', async (req: Request, res: Response) => {
-  const workspaceId = (req.query['workspace_id'] as string) ?? '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || (req.query['workspace_id'] as string);
 
   try {
     const domains = await DomainRegistryService.listDomains({ workspaceId });

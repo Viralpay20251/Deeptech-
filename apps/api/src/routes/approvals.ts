@@ -14,7 +14,7 @@ import { authenticate, requireRole } from '../middleware/auth.js';
 export const approvalsRouter = Router();
 
 approvalsRouter.get('/', async (req: Request, res: Response) => {
-  const workspaceId = (req.query['workspace_id'] as string) ?? '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || (req.query['workspace_id'] as string);
   const status = (req.query['status'] as string) ?? 'pending';
 
   try {
@@ -49,7 +49,7 @@ approvalsRouter.post(
   async (req: Request, res: Response) => {
     const { decision, notes = '' } = req.body;
     const operatorId = req.user!.id;
-    const workspaceId = req.user!.workspace_id || ((req.query['workspace_id'] as string) ?? '00000000-0000-0000-0000-000000000001');
+    const workspaceId = req.user!.workspace_id;
 
   if (decision !== 'approved' && decision !== 'rejected') {
     res.status(400).json({

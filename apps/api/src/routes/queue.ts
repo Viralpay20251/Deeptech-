@@ -28,7 +28,7 @@ queueRouter.get('/metrics', async (_req: Request, res: Response) => {
 
 // ─── GET /jobs ────────────────────────────────────────────────────────────────
 queueRouter.get('/jobs', async (req: Request, res: Response) => {
-  const workspaceId = (req.query['workspace_id'] as string) ?? '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || (req.query['workspace_id'] as string);
   const jobType = req.query['job_type'] as string | undefined;
   const status = req.query['status'] as string | undefined;
 
@@ -54,6 +54,15 @@ queueRouter.get('/jobs/:id', async (req: Request, res: Response) => {
       res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: `Job ${id} not found` } });
       return;
     }
+
+    if (req.user?.workspace_id && job.workspace_id !== req.user.workspace_id) {
+      res.status(403).json({
+        success: false,
+        error: { code: 'TENANT_ISOLATION_VIOLATION', message: 'Job does not belong to caller workspace.' },
+      });
+      return;
+    }
+
     res.json({ success: true, data: job });
   } catch (err) {
     res.status(500).json({ success: false, error: { code: 'GET_FAILED', message: (err as Error).message } });
@@ -63,7 +72,7 @@ queueRouter.get('/jobs/:id', async (req: Request, res: Response) => {
 // ─── POST /jobs/:id/cancel ────────────────────────────────────────────────────
 queueRouter.post('/jobs/:id/cancel', async (req: Request, res: Response) => {
   const id = String(req.params['id']);
-  const workspaceId = (req.body?.workspace_id as string) ?? '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || (req.body?.workspace_id as string);
 
   try {
     const cancelled = await JobQueueService.cancelJob(id, workspaceId);

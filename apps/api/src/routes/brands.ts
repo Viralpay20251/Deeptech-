@@ -11,7 +11,7 @@ import { query } from '../lib/db.js';
 export const brandsRouter = Router();
 
 brandsRouter.get('/', async (req: Request, res: Response) => {
-  const workspaceId = (req.query['workspace_id'] as string) ?? '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || (req.query['workspace_id'] as string);
 
   try {
     const result = await query(

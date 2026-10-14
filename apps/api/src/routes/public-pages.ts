@@ -108,7 +108,7 @@ pagesApiRouter.get('/p/:slug', async (req: Request, res: Response) => {
  */
 pagesApiRouter.get('/', async (req: Request, res: Response) => {
   const { workspace_id, brand_id } = req.query;
-  const workspaceId = (workspace_id as string) ?? '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || (workspace_id as string);
   try {
     const pages = await PublishingService.listPages(workspaceId, brand_id as string | undefined);
     res.json({ success: true, data: pages, meta: { total: pages.length } });
@@ -147,7 +147,7 @@ pagesApiRouter.post('/publish', async (req: Request, res: Response) => {
     return;
   }
 
-  const workspaceId = workspace_id ?? '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || workspace_id;
 
   try {
     const page = await PublishingService.publishPage({

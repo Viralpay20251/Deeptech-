@@ -195,7 +195,7 @@ crawlerRouter.post('/inspect-url', async (req: Request, res: Response) => {
 const handleWorkerTick = async (_req: Request, res: Response) => {
   try {
     const { CrawlerWorker } = await import('../workers/crawler-worker.js');
-    const result = await CrawlerWorker.processNextJob();
+    const result = await CrawlerWorker.processBatch();
     res.json({
       success: true,
       execution_mode: 'live',

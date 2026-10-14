@@ -64,6 +64,10 @@ export async function authenticate(
   next: NextFunction
 ): Promise<void> {
   try {
+    if (req.user) {
+      return next();
+    }
+
     const authHeader = req.headers['authorization'];
     const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
 
@@ -105,22 +109,52 @@ export async function authenticate(
       }
     }
 
-    // Operator bootstrap / service header (x-operator-id)
+    // Service credential authentication (x-operator-id with cryptographic x-service-key)
     const operatorId = req.headers['x-operator-id'] as string | undefined;
-    const requestedWorkspace = (req.headers['x-workspace-id'] as string) || (req.body?.workspace_id as string);
+    const serviceKey =
+      (req.headers['x-service-key'] as string | undefined) ||
+      (req.headers['x-service-secret'] as string | undefined);
 
     if (operatorId) {
+      // Require cryptographic service proof — a user ID is an identifier, not proof of identity
+      const internalSecret = process.env['INTERNAL_WORKSPACE_SECRET'];
+      if (!serviceKey || !internalSecret) {
+        res.status(401).json({
+          success: false,
+          error: {
+            code: 'FORGED_OR_UNSIGNED_IDENTITY',
+            message: 'x-operator-id is an identifier, not proof of identity. A cryptographically authenticated service credential (x-service-key) or Authorization: Bearer <token> is required.',
+          },
+        });
+        return;
+      }
+
+      const expectedBuf = Buffer.from(internalSecret, 'utf8');
+      const actualBuf = Buffer.from(String(serviceKey), 'utf8');
+      const isKeyValid = expectedBuf.length === actualBuf.length && timingSafeEqual(expectedBuf, actualBuf);
+
+      if (!isKeyValid) {
+        res.status(401).json({
+          success: false,
+          error: {
+            code: 'INVALID_SERVICE_KEY',
+            message: 'Service credential verification failed.',
+          },
+        });
+        return;
+      }
+
       const userRes = await query<{ id: string; email: string; role: string; workspace_id: string }>(
         `SELECT id, email, role, workspace_id FROM users WHERE id = $1`,
         [operatorId]
       );
       if (userRes.rows.length && userRes.rows[0]) {
         const u = userRes.rows[0];
-        // Enforce workspace match if client supplied workspace header
-        if (requestedWorkspace && u.workspace_id !== requestedWorkspace && u.role !== 'workspace_admin') {
+        const requestedWorkspace = (req.headers['x-workspace-id'] as string) || (req.body?.workspace_id as string);
+        if (requestedWorkspace && u.workspace_id !== requestedWorkspace) {
           res.status(403).json({
             success: false,
-            error: { code: 'CROSS_WORKSPACE_FORBIDDEN', message: 'Operator does not belong to specified workspace.' },
+            error: { code: 'TENANT_ISOLATION_VIOLATION', message: 'Operator does not belong to specified workspace.' },
           });
           return;
         }
@@ -145,7 +179,7 @@ export async function authenticate(
       success: false,
       error: {
         code: 'AUTHENTICATION_REQUIRED',
-        message: 'Authentication required. Provide Authorization: Bearer <token> or valid x-operator-id header.',
+        message: 'Authentication required. Provide Authorization: Bearer <token> or valid x-service-key with x-operator-id.',
       },
     });
   } catch (err) {
@@ -199,11 +233,12 @@ export function requireWorkspaceScope(
   }
 
   const requestedWorkspace =
-    req.params['workspace_id'] ||
-    req.query['workspace_id'] ||
+    (req.headers['x-workspace-id'] as string) ||
+    (req.params['workspace_id'] as string) ||
+    (req.query['workspace_id'] as string) ||
     req.body?.workspace_id;
 
-  if (requestedWorkspace && requestedWorkspace !== req.user.workspace_id && req.user.role !== 'workspace_admin') {
+  if (requestedWorkspace && requestedWorkspace !== req.user.workspace_id) {
     res.status(403).json({
       success: false,
       error: {

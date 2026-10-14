@@ -18,7 +18,20 @@ describe('Wave 1 & 2 Connectors and Sync Execution', () => {
   let server: Server;
   let baseUrl: string;
 
+  const authHeaders = {
+    'Content-Type': 'application/json',
+    'x-operator-id': 'c4344661-4a88-46a9-b85d-c65303c37227',
+    'x-service-key': process.env['INTERNAL_WORKSPACE_SECRET'] || 'growth_os_internal_session_secret_32_characters_minimum!',
+  };
+
   beforeAll(async () => {
+    const { query } = await import('../../apps/api/src/lib/db.js');
+    await query(
+      `INSERT INTO users (id, workspace_id, email, display_name, password_hash, role)
+       VALUES ('c4344661-4a88-46a9-b85d-c65303c37227', '00000000-0000-0000-0000-000000000001', 'operator@growth-os.internal', 'Test Operator', 'hash', 'workspace_admin')
+       ON CONFLICT (id) DO UPDATE SET role = 'workspace_admin'`
+    ).catch(() => {});
+
     await new Promise<void>((resolve) => {
       server = app.listen(0, () => {
         const address = server.address();
@@ -57,7 +70,7 @@ describe('Wave 1 & 2 Connectors and Sync Execution', () => {
   it('POST /api/v1/connectors/sync executes sync and logs into connector_sync_runs', async () => {
     const res = await fetch(`${baseUrl}/api/v1/connectors/sync`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         connector_type: 'wikipedia_wikidata',
         query_term: 'Search engine optimization',
@@ -71,7 +84,10 @@ describe('Wave 1 & 2 Connectors and Sync Execution', () => {
     expect(body.data.connector_type).toBe('wikipedia_wikidata');
 
     // Verify it appears in sync-runs list
-    const listRes = await fetch(`${baseUrl}/api/v1/connectors/sync-runs?connector_type=wikipedia_wikidata`);
+    const listRes = await fetch(
+      `${baseUrl}/api/v1/connectors/sync-runs?connector_type=wikipedia_wikidata`,
+      { headers: authHeaders }
+    );
     expect(listRes.status).toBe(200);
     const listBody = (await listRes.json()) as any;
     expect(listBody.success).toBe(true);

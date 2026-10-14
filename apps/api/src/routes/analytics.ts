@@ -19,7 +19,7 @@ import { query } from '../lib/db.js';
 export const analyticsRouter = Router();
 
 analyticsRouter.get('/scorecards', async (req: Request, res: Response) => {
-  const workspaceId = (req.query['workspace_id'] as string) ?? '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || (req.query['workspace_id'] as string);
 
   try {
     // 1. Fetch brands and their metric definitions
@@ -131,7 +131,7 @@ analyticsRouter.get('/scorecards', async (req: Request, res: Response) => {
  * Traffic Reconciliation Endpoint: GET /api/v1/analytics/reconciliation
  */
 analyticsRouter.get('/reconciliation', async (req: Request, res: Response) => {
-  const workspaceId = (req.query['workspace_id'] as string) ?? '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || (req.query['workspace_id'] as string);
 
   try {
     const clickStats = await query<{
@@ -178,7 +178,7 @@ analyticsRouter.get('/reconciliation', async (req: Request, res: Response) => {
 
 // ─── Audience Insights Endpoint ───────────────────────────────────────────────
 analyticsRouter.get('/audience-insights', async (req: Request, res: Response) => {
-  const workspaceId = (req.query['workspace_id'] as string) ?? '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || (req.query['workspace_id'] as string);
 
   try {
     const brandsRes = await query<{
@@ -238,7 +238,7 @@ analyticsRouter.get('/audience-insights', async (req: Request, res: Response) =>
 
 // ─── Experiments Endpoints ───────────────────────────────────────────────────
 analyticsRouter.get('/experiments', async (req: Request, res: Response) => {
-  const workspaceId = (req.query['workspace_id'] as string) ?? '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || (req.query['workspace_id'] as string);
   const brandId = req.query['brand_id'] as string | undefined;
 
   try {
@@ -299,7 +299,7 @@ analyticsRouter.post('/experiments', async (req: Request, res: Response) => {
     return;
   }
 
-  const workspaceId = workspace_id ?? '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || workspace_id;
 
   try {
     const insertRes = await query<{ id: string }>(

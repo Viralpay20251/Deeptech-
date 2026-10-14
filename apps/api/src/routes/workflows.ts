@@ -10,13 +10,15 @@ export const workflowsRouter = Router();
 
 workflowsRouter.post('/trigger', async (req: Request, res: Response) => {
   const {
-    workspace_id = '00000000-0000-0000-0000-000000000001',
+    workspace_id,
     brand_id,
     workflow_definition_id = 'demand_discovery_vertical_slice',
     idempotency_key,
     signal_summary,
     autonomy_level = 1,
   } = req.body;
+
+  const workspaceId = req.user?.workspace_id || workspace_id;
 
   if (!brand_id || !idempotency_key || !signal_summary?.topic) {
     res.status(400).json({
@@ -31,7 +33,7 @@ workflowsRouter.post('/trigger', async (req: Request, res: Response) => {
 
   try {
     const result = await WorkflowOrchestrator.execute({
-      workspace_id,
+      workspace_id: workspaceId,
       brand_id,
       workflow_definition_id,
       idempotency_key,
@@ -66,7 +68,7 @@ workflowsRouter.post('/trigger', async (req: Request, res: Response) => {
 });
 
 workflowsRouter.get('/runs', async (req: Request, res: Response) => {
-  const workspaceId = (req.query['workspace_id'] as string) ?? '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || (req.query['workspace_id'] as string);
 
   try {
     const result = await query(

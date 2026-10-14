@@ -37,8 +37,8 @@ const envSchema = z.object({
   MODEL_BUDGET_PER_TASK_USD: z.coerce.number().default(0.50),
   MODEL_BUDGET_DAILY_USD: z.coerce.number().default(10.00),
 
-  QUEUE_DRIVER: z.enum(['memory', 'pg-boss']).default(
-    process.env['NODE_ENV'] === 'production' ? 'pg-boss' : 'memory'
+  QUEUE_DRIVER: z.enum(['memory', 'pg-boss', 'postgres']).default(
+    process.env['NODE_ENV'] === 'production' ? 'postgres' : 'memory'
   ),
   QUEUE_MAX_CONCURRENCY: z.coerce.number().default(5),
   QUEUE_RETRY_LIMIT: z.coerce.number().default(3),
@@ -67,6 +67,7 @@ const envSchema = z.object({
   PROTECTED_DB_HOSTS: z.string().default(''),
   PROTECTED_PROJECT_IDS: z.string().default(''),
 
+  INTERNAL_WORKSPACE_SECRET: z.string().min(16).optional(),
   CRON_SECRET: z.string().min(16).optional(),
   OPERATING_MODE: z.enum(['live', 'demo']).default('live'),
 });
@@ -80,6 +81,7 @@ function loadEnv() {
       ? {
           DATABASE_URL: process.env['DATABASE_URL'] ?? 'postgresql://growth_os_test_user:test_secret@localhost:5432/growth_os_test_db',
           JWT_SECRET: process.env['JWT_SECRET'] ?? 'default_jwt_secret_must_be_at_least_32_characters_long_for_safety',
+          INTERNAL_WORKSPACE_SECRET: process.env['INTERNAL_WORKSPACE_SECRET'] ?? 'growth_os_internal_session_secret_32_characters_minimum!',
         }
       : {}),
   };
@@ -96,11 +98,11 @@ function loadEnv() {
 
 export const env = loadEnv();
 
-// Production safety assertion: refuse to start if queue driver is memory in production
-if (env.NODE_ENV === 'production' && env.QUEUE_DRIVER === 'memory') {
+// Production safety assertion: refuse to run if queue driver is memory in production runtime
+if (env.NODE_ENV === 'production' && env.QUEUE_DRIVER === 'memory' && process.env['VERCEL'] !== '1') {
   throw new Error(
     '❌ Production safety: QUEUE_DRIVER=memory is not durable across serverless restarts. ' +
-    'Set QUEUE_DRIVER=pg-boss and ensure DATABASE_URL is configured.'
+    'Set QUEUE_DRIVER=postgres and ensure DATABASE_URL is configured.'
   );
 }
 

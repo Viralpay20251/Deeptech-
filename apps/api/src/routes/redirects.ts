@@ -76,7 +76,7 @@ trackedLinksApiRouter.post('/', async (req: Request, res: Response) => {
     return;
   }
 
-  const workspaceId = workspace_id ?? '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || workspace_id;
 
   try {
     const link = await RedirectRouterService.createTrackedLink({
@@ -106,7 +106,7 @@ trackedLinksApiRouter.post('/', async (req: Request, res: Response) => {
  * List tracked links: GET /api/v1/tracked-links
  */
 trackedLinksApiRouter.get('/', async (req: Request, res: Response) => {
-  const workspaceId = (req.query['workspace_id'] as string) ?? '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || (req.query['workspace_id'] as string);
   const brandId = req.query['brand_id'] as string | undefined;
 
   try {

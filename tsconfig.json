@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "moduleResolution": "NodeNext",
+    "paths": {
+      "@growth-os/shared-types": ["./packages/shared-types/src/index.ts"]
+    }
+  },
+  "include": ["api/**/*", "scripts/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+}

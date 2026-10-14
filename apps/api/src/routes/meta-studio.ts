@@ -33,7 +33,7 @@ metaStudioRouter.post('/inspect', async (req: Request, res: Response) => {
     return;
   }
 
-  const workspaceId = workspace_id || '00000000-0000-0000-0000-000000000001';
+  const workspaceId = (req.user?.workspace_id || workspace_id) as string;
 
   try {
     const inspected = await MetaStudioService.inspectPage(url, workspaceId, brand_id, allowed_domains);
@@ -146,7 +146,7 @@ metaStudioRouter.post('/generate', async (req: Request, res: Response) => {
     return;
   }
 
-  const workspaceId = workspace_id || '00000000-0000-0000-0000-000000000001';
+  const workspaceId = (req.user?.workspace_id || workspace_id) as string;
 
   try {
     const input: MetaStudioGenerateInput = {
@@ -211,7 +211,7 @@ metaStudioRouter.post('/proposals', async (req: Request, res: Response) => {
     return;
   }
 
-  const workspaceId = workspace_id || '00000000-0000-0000-0000-000000000001';
+  const workspaceId = (req.user?.workspace_id || workspace_id) as string;
 
   try {
     const proposal = await MetaStudioService.createProposal(
@@ -231,7 +231,7 @@ metaStudioRouter.post('/proposals', async (req: Request, res: Response) => {
 
 // ─── GET /proposals ───────────────────────────────────────────────────────────
 metaStudioRouter.get('/proposals', async (req: Request, res: Response) => {
-  const workspaceId = (req.query['workspace_id'] as string) || '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || (req.query['workspace_id'] as string);
   const brandId = req.query['brand_id'] as string | undefined;
 
   try {
@@ -255,14 +255,27 @@ metaStudioRouter.post(
       override_grounding_warnings?: boolean;
     };
     const operatorId = req.user!.id;
-    const workspaceId: string =
+    const requestedWorkspace =
       typeof req.body?.workspace_id === 'string'
         ? req.body.workspace_id
         : typeof req.headers['x-workspace-id'] === 'string'
         ? req.headers['x-workspace-id']
         : typeof req.query['workspace_id'] === 'string'
         ? (req.query['workspace_id'] as string)
-        : req.user!.workspace_id || '00000000-0000-0000-0000-000000000001';
+        : req.user!.workspace_id;
+
+    if (requestedWorkspace && requestedWorkspace !== req.user!.workspace_id) {
+      res.status(403).json({
+        success: false,
+        error: {
+          code: 'TENANT_ISOLATION_VIOLATION',
+          message: 'Access denied: cannot operate on or query cross-workspace resources.',
+        },
+      });
+      return;
+    }
+
+    const workspaceId = req.user!.workspace_id;
 
     if (!id) {
       res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Proposal ID is required' } });
@@ -324,7 +337,7 @@ metaStudioRouter.post('/validate-grounding', async (req: Request, res: Response)
 
 // ─── GET /cross-page-intelligence ─────────────────────────────────────────────
 metaStudioRouter.get('/cross-page-intelligence', async (req: Request, res: Response) => {
-  const workspaceId = (req.query['workspace_id'] as string) || '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || (req.query['workspace_id'] as string);
   const brandId = req.query['brand_id'] as string | undefined;
   const crawlJobId = req.query['crawl_job_id'] as string | undefined;
 
@@ -376,7 +389,7 @@ metaStudioRouter.post('/outcomes', async (req: Request, res: Response) => {
     return;
   }
 
-  const workspaceId = workspace_id || '00000000-0000-0000-0000-000000000001';
+  const workspaceId = (req.user?.workspace_id || workspace_id) as string;
 
   try {
     const measurement = await MetaStudioService.recordOutcomeMeasurement({
@@ -393,7 +406,7 @@ metaStudioRouter.post('/outcomes', async (req: Request, res: Response) => {
 
 // ─── GET /outcomes ────────────────────────────────────────────────────────────
 metaStudioRouter.get('/outcomes', async (req: Request, res: Response) => {
-  const workspaceId = (req.query['workspace_id'] as string) || '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || (req.query['workspace_id'] as string);
   const brandId = req.query['brand_id'] as string | undefined;
   const proposalId = req.query['proposal_id'] as string | undefined;
 
@@ -407,7 +420,7 @@ metaStudioRouter.get('/outcomes', async (req: Request, res: Response) => {
 
 // ─── GET /intelligence-graph ──────────────────────────────────────────────────
 metaStudioRouter.get('/intelligence-graph', async (req: Request, res: Response) => {
-  const workspaceId = (req.query['workspace_id'] as string) || '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || (req.query['workspace_id'] as string);
   let brandId = req.query['brand_id'] as string | undefined;
 
   try {

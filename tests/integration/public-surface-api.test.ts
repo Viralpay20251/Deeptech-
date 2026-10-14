@@ -9,8 +9,20 @@ import { app } from '../../apps/api/src/index.js';
 describe('Public Publishing Surface & Traffic Reconciliation Integration', () => {
   let server: Server;
   let baseUrl: string;
+  const authHeaders = {
+    'Content-Type': 'application/json',
+    'x-operator-id': 'c4344661-4a88-46a9-b85d-c65303c37227',
+    'x-service-key': process.env['INTERNAL_WORKSPACE_SECRET'] || 'growth_os_internal_session_secret_32_characters_minimum!',
+  };
 
   beforeAll(async () => {
+    const { query } = await import('../../apps/api/src/lib/db.js');
+    await query(
+      `INSERT INTO users (id, workspace_id, email, display_name, password_hash, role)
+       VALUES ('c4344661-4a88-46a9-b85d-c65303c37227', '00000000-0000-0000-0000-000000000001', 'operator@growth-os.internal', 'Test Operator', 'hash', 'workspace_admin')
+       ON CONFLICT (id) DO UPDATE SET role = 'workspace_admin'`
+    ).catch(() => {});
+
     await new Promise<void>((resolve) => {
       server = app.listen(0, () => {
         const address = server.address();
@@ -63,7 +75,7 @@ describe('Public Publishing Surface & Traffic Reconciliation Integration', () =>
   });
 
   it('reports truthful scorecards with unverified product MAU and separated Nuty Tales purchasers', async () => {
-    const res = await fetch(`${baseUrl}/api/v1/analytics/scorecards`);
+    const res = await fetch(`${baseUrl}/api/v1/analytics/scorecards`, { headers: authHeaders });
     expect(res.status).toBe(200);
 
     const body = (await res.json()) as {
@@ -94,7 +106,7 @@ describe('Public Publishing Surface & Traffic Reconciliation Integration', () =>
   });
 
   it('serves attribution reconciliation endpoint', async () => {
-    const res = await fetch(`${baseUrl}/api/v1/analytics/reconciliation`);
+    const res = await fetch(`${baseUrl}/api/v1/analytics/reconciliation`, { headers: authHeaders });
     expect(res.status).toBe(200);
 
     const body = (await res.json()) as {

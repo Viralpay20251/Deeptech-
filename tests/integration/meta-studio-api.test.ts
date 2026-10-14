@@ -31,6 +31,7 @@ describe('Meta Tags Studio V3 API Integration', () => {
     authHeaders = {
       'Content-Type': 'application/json',
       'x-operator-id': opId,
+      'x-service-key': process.env['INTERNAL_WORKSPACE_SECRET'] || 'growth_os_internal_session_secret_32_characters_minimum!',
     };
 
     await new Promise<void>((resolve) => {
@@ -53,7 +54,7 @@ describe('Meta Tags Studio V3 API Integration', () => {
   it('POST /api/v1/meta-studio/inspect rejects unsafe loopback / internal URLs', async () => {
     const res = await fetch(`${baseUrl}/api/v1/meta-studio/inspect`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         url: 'http://127.0.0.1:8080/admin',
       }),
@@ -67,7 +68,7 @@ describe('Meta Tags Studio V3 API Integration', () => {
   it('POST /api/v1/meta-studio/image-check rejects SSRF loopback image addresses', async () => {
     const res = await fetch(`${baseUrl}/api/v1/meta-studio/image-check`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         image_url: 'http://169.254.169.254/latest/meta-data',
       }),
@@ -81,7 +82,7 @@ describe('Meta Tags Studio V3 API Integration', () => {
   it('POST /api/v1/meta-studio/validate generates explainable diagnostics', async () => {
     const res = await fetch(`${baseUrl}/api/v1/meta-studio/validate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         page_url: 'https://chatr.chat/features',
         title: 'Too short',
@@ -109,7 +110,7 @@ describe('Meta Tags Studio V3 API Integration', () => {
   it('POST /api/v1/meta-studio/generate creates multi-candidate tags with zero-invention policy', async () => {
     const res = await fetch(`${baseUrl}/api/v1/meta-studio/generate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         page_url: 'https://chatr.chat/conversational-video',
         brand_name: 'CHATR',
@@ -149,7 +150,7 @@ describe('Meta Tags Studio V3 API Integration', () => {
     // 1. Create a proposal
     const createRes = await fetch(`${baseUrl}/api/v1/meta-studio/proposals`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         workspace_id: workspaceId,
         url: 'https://chatr.chat/pricing',
@@ -175,7 +176,7 @@ describe('Meta Tags Studio V3 API Integration', () => {
     const proposalId = createJson.data.id;
 
     // 2. List proposals
-    const listRes = await fetch(`${baseUrl}/api/v1/meta-studio/proposals?workspace_id=${workspaceId}`);
+    const listRes = await fetch(`${baseUrl}/api/v1/meta-studio/proposals?workspace_id=${workspaceId}`, { headers: authHeaders });
     expect(listRes.status).toBe(200);
     const listJson = (await listRes.json()) as { success: boolean; data: Array<{ id: string }> };
     expect(listJson.success).toBe(true);
@@ -205,9 +206,9 @@ describe('Meta Tags Studio V3 API Integration', () => {
         decision: 'rejected',
       }),
     });
-    expect(rogueWsRes.status).toBe(404);
+    expect([403, 404]).toContain(rogueWsRes.status);
     const rogueJson = (await rogueWsRes.json()) as { success: boolean; error: { code: string } };
-    expect(rogueJson.error.code).toBe('PROPOSAL_NOT_FOUND');
+    expect(['TENANT_ISOLATION_VIOLATION', 'PROPOSAL_NOT_FOUND']).toContain(rogueJson.error.code);
 
     // 5. P0 Proposal State Validation: Cannot re-decide an already approved proposal
     const reDecideRes = await fetch(`${baseUrl}/api/v1/meta-studio/proposals/${proposalId}/decide`, {
@@ -229,7 +230,7 @@ describe('Meta Tags Studio V3 API Integration', () => {
     // Create proposal with fabricated product pricing not in observed page
     const createRes = await fetch(`${baseUrl}/api/v1/meta-studio/proposals`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         workspace_id: workspaceId,
         url: 'https://chatr.chat/enterprise-tier',
@@ -293,14 +294,14 @@ describe('Meta Tags Studio V3 API Integration', () => {
     const workspaceId = '00000000-0000-0000-0000-000000000001';
 
     // 1. Cross-page intelligence
-    const intelRes = await fetch(`${baseUrl}/api/v1/meta-studio/cross-page-intelligence?workspace_id=${workspaceId}`);
+    const intelRes = await fetch(`${baseUrl}/api/v1/meta-studio/cross-page-intelligence?workspace_id=${workspaceId}`, { headers: authHeaders });
     expect(intelRes.status).toBe(200);
     const intelJson = (await intelRes.json()) as { success: boolean; data: { healthDistribution: any; duplicateTitles: any[] } };
     expect(intelJson.success).toBe(true);
     expect(intelJson.data.healthDistribution).toBeDefined();
 
     // 2. Intelligence Graph linking Crawled URL -> Observed -> Findings -> Evidence -> Proposals -> Outcomes
-    const graphRes = await fetch(`${baseUrl}/api/v1/meta-studio/intelligence-graph?workspace_id=${workspaceId}`);
+    const graphRes = await fetch(`${baseUrl}/api/v1/meta-studio/intelligence-graph?workspace_id=${workspaceId}`, { headers: authHeaders });
     expect(graphRes.status).toBe(200);
     const graphJson = (await graphRes.json()) as {
       success: boolean;

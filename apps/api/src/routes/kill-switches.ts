@@ -14,7 +14,7 @@ import { authenticate, requireRole } from '../middleware/auth.js';
 export const killSwitchesRouter = Router();
 
 killSwitchesRouter.get('/', async (req: Request, res: Response) => {
-  const workspaceId = (req.query['workspace_id'] as string) ?? '00000000-0000-0000-0000-000000000001';
+  const workspaceId = req.user?.workspace_id || (req.query['workspace_id'] as string);
 
   try {
     const result = await query(
@@ -43,13 +43,12 @@ killSwitchesRouter.post(
   requireRole(['workspace_admin', 'operator']),
   async (req: Request, res: Response) => {
     const {
-      workspace_id,
       scope,
       scope_id = null,
       reason,
     } = req.body;
     const operatorId = req.user!.id;
-    const targetWorkspaceId = workspace_id || req.user!.workspace_id || '00000000-0000-0000-0000-000000000001';
+    const targetWorkspaceId = req.user!.workspace_id;
 
     if (!scope || !reason) {
       res.status(400).json({
@@ -86,10 +85,18 @@ killSwitchesRouter.post(
   requireRole(['workspace_admin', 'operator']),
   async (req: Request, res: Response) => {
     try {
-      await query(
-        `UPDATE kill_switch_events SET deactivated_at = NOW() WHERE id = $1`,
-        [req.params['id']]
+      const result = await query(
+        `UPDATE kill_switch_events SET deactivated_at = NOW() WHERE id = $1 AND workspace_id = $2`,
+        [req.params['id'], req.user!.workspace_id]
       );
+
+      if (result.rowCount === 0) {
+        res.status(404).json({
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'Kill switch event not found in caller workspace.' },
+        });
+        return;
+      }
 
       logger.info({ id: req.params['id'], operatorId: req.user!.id }, 'Emergency kill switch deactivated');
 

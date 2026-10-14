@@ -19,7 +19,19 @@ describe('P0: Connector Truthfulness & Elimination of Fake Tokens', () => {
   let server: Server;
   let baseUrl: string;
 
+  const authHeaders = {
+    'Content-Type': 'application/json',
+    'x-operator-id': 'c4344661-4a88-46a9-b85d-c65303c37227',
+    'x-service-key': process.env['INTERNAL_WORKSPACE_SECRET'] || 'growth_os_internal_session_secret_32_characters_minimum!',
+  };
+
   beforeAll(async () => {
+    await query(
+      `INSERT INTO users (id, workspace_id, email, display_name, password_hash, role)
+       VALUES ('c4344661-4a88-46a9-b85d-c65303c37227', '00000000-0000-0000-0000-000000000001', 'operator@growth-os.internal', 'Test Operator', 'hash', 'workspace_admin')
+       ON CONFLICT (id) DO UPDATE SET role = 'workspace_admin'`
+    ).catch(() => {});
+
     await new Promise<void>((resolve) => {
       server = app.listen(0, () => {
         const address = server.address();
@@ -49,7 +61,7 @@ describe('P0: Connector Truthfulness & Elimination of Fake Tokens', () => {
   it('rejects login-direct when no credential or token is provided', async () => {
     const res = await fetch(`${baseUrl}/api/v1/connectors/login-direct`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         workspace_id: TEST_WS_ID,
         connector_type: 'google_search_console',
@@ -66,7 +78,7 @@ describe('P0: Connector Truthfulness & Elimination of Fake Tokens', () => {
   it('rejects manufactured placeholder tokens like token_direct_12345', async () => {
     const res = await fetch(`${baseUrl}/api/v1/connectors/login-direct`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         workspace_id: TEST_WS_ID,
         connector_type: 'google_search_console',
@@ -85,7 +97,7 @@ describe('P0: Connector Truthfulness & Elimination of Fake Tokens', () => {
     const realToken = 'ya29.a0AfH6SMD_REAL_VERIFIED_OAUTH_TOKEN_EXAMPLE_LONG_STRING';
     const res = await fetch(`${baseUrl}/api/v1/connectors/login-direct`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         workspace_id: TEST_WS_ID,
         connector_type: 'google_search_console',
@@ -111,7 +123,7 @@ describe('P0: Connector Truthfulness & Elimination of Fake Tokens', () => {
     // 1. Initially without token -> awaiting_credentials
     const resBefore = await fetch(`${baseUrl}/api/v1/connectors/health-check`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         workspace_id: TEST_WS_ID,
         connector_type: 'google_search_console',
@@ -137,7 +149,7 @@ describe('P0: Connector Truthfulness & Elimination of Fake Tokens', () => {
 
     const resAfter = await fetch(`${baseUrl}/api/v1/connectors/health-check`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         workspace_id: TEST_WS_ID,
         connector_type: 'google_search_console',

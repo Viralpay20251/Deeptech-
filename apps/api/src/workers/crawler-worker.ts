@@ -92,37 +92,120 @@ export class CrawlerWorker {
         }
       }
 
-      // 3. Fallback: check for any pending crawl_jobs that were not yet in job_queue
-      const pendingLegacy = await query<{ id: string; workspace_id: string; brand_id: string | null; label: string; seed_urls: string[]; profile: string; max_pages: number }>(
-        `UPDATE crawl_jobs
-         SET status = 'running', started_at = NOW(), updated_at = NOW()
-         WHERE id = (
-           SELECT id FROM crawl_jobs
-           WHERE status = 'pending'
-           ORDER BY created_at ASC
-           LIMIT 1
-           FOR UPDATE SKIP LOCKED
-         )
-         RETURNING id, workspace_id, brand_id, label, seed_urls, profile, max_pages`
-      );
-
-      if (pendingLegacy.rows.length && pendingLegacy.rows[0]) {
-        const legacy = pendingLegacy.rows[0];
-        logger.info({ crawlJobId: legacy.id }, 'Processing pending crawl_job from legacy table');
-        const result = await CrawlEngineService.executeCrawlJob(legacy.id);
-        return {
-          processed: true,
-          crawlJobId: legacy.id,
-          pagesCrawled: result.pagesCrawled,
-          error: result.error,
-        };
-      }
-
+      // No job available in durable job_queue
       return { processed: false };
     } catch (err) {
       logger.error({ err: (err as Error).message }, 'Crawler worker execution error');
       return { processed: false, error: (err as Error).message };
     }
+  }
+
+  /**
+   * Safely reconcile any pending crawl_jobs from legacy table into durable job_queue
+   */
+  public static async reconcileLegacyPendingJobs(): Promise<number> {
+    try {
+      const pending = await query<{
+        id: string;
+        workspace_id: string;
+        brand_id: string | null;
+        label: string;
+        seed_urls: string[];
+        profile: string;
+        max_pages: number;
+      }>(
+        `SELECT c.id, c.workspace_id, c.brand_id, c.label, c.seed_urls, c.profile, c.max_pages
+         FROM crawl_jobs c
+         LEFT JOIN job_queue q ON q.payload->>'crawl_job_id' = c.id::text
+         WHERE c.status = 'pending' AND q.id IS NULL
+         LIMIT 50`
+      );
+
+      let count = 0;
+      for (const row of pending.rows) {
+        await JobQueueService.enqueue({
+          jobType: 'crawl',
+          workspaceId: row.workspace_id,
+          brandId: row.brand_id,
+          idempotencyKey: `reconcile_crawl_${row.id}`,
+          payload: {
+            crawl_job_id: row.id,
+            label: row.label,
+            seed_urls: row.seed_urls,
+            profile: row.profile,
+            max_pages: row.max_pages,
+          },
+        });
+        count++;
+      }
+      if (count > 0) {
+        logger.info({ reconciledCount: count }, 'Reconciled legacy pending crawl_jobs into durable job_queue');
+      }
+      return count;
+    } catch (err) {
+      logger.warn({ err: (err as Error).message }, 'Legacy crawl reconciliation skipped');
+      return 0;
+    }
+  }
+
+  /**
+   * Bounded batch drain loop for serverless cron or manual execution.
+   * Drains up to maxJobs within maxDurationMs safely before serverless timeout.
+   */
+  public static async processBatch(options?: {
+    maxJobs?: number;
+    maxDurationMs?: number;
+  }): Promise<{
+    processed: boolean;
+    jobsAttempted: number;
+    jobsSucceeded: number;
+    jobsFailed: number;
+    totalPagesCrawled: number;
+    durationMs: number;
+    details: Array<{ jobId?: string; crawlJobId?: string; pagesCrawled?: number; error?: string }>;
+  }> {
+    const maxJobs = options?.maxJobs ?? 10;
+    const maxDurationMs = options?.maxDurationMs ?? 45000;
+    const startTime = Date.now();
+
+    // Reconcile any pre-existing legacy pending records into durable queue
+    await this.reconcileLegacyPendingJobs().catch(() => 0);
+
+    const details: Array<{ jobId?: string; crawlJobId?: string; pagesCrawled?: number; error?: string }> = [];
+    let totalPagesCrawled = 0;
+    let jobsSucceeded = 0;
+    let jobsFailed = 0;
+
+    while (details.length < maxJobs && Date.now() - startTime < maxDurationMs) {
+      const res = await this.processNextJob();
+      if (!res.processed) {
+        break; // Queue is empty
+      }
+
+      details.push(res);
+      if (res.error) {
+        jobsFailed++;
+      } else {
+        jobsSucceeded++;
+        totalPagesCrawled += res.pagesCrawled ?? 0;
+      }
+    }
+
+    const durationMs = Date.now() - startTime;
+    logger.info(
+      { jobsAttempted: details.length, jobsSucceeded, jobsFailed, totalPagesCrawled, durationMs },
+      'Crawler worker completed batch processing tick'
+    );
+
+    return {
+      processed: details.length > 0,
+      jobsAttempted: details.length,
+      jobsSucceeded,
+      jobsFailed,
+      totalPagesCrawled,
+      durationMs,
+      details,
+    };
   }
 
   /**

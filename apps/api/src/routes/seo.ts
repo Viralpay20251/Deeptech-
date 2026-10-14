@@ -28,7 +28,7 @@ seoRouter.post('/audit-url', async (req: Request, res: Response) => {
     return;
   }
 
-  const workspaceId = workspace_id || '00000000-0000-0000-0000-000000000001';
+  const workspaceId = (req.user?.workspace_id || workspace_id) as string;
 
   try {
     const result = await SeoWorkbenchService.auditUrl(url, workspaceId, brand_id);
