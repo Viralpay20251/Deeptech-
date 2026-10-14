@@ -66,7 +66,15 @@ async function runMigrations(): Promise<void> {
   }
 }
 
-runMigrations().catch((err) => {
-  logger.error({ err }, 'Migration failed');
-  process.exit(1);
-});
+import { pool } from '../lib/db.js';
+
+runMigrations()
+  .then(async () => {
+    await pool.end();
+    process.exit(0);
+  })
+  .catch(async (err) => {
+    logger.error({ err }, 'Migration failed');
+    await pool.end().catch(() => {});
+    process.exit(1);
+  });

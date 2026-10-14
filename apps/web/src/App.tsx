@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { DomainRegistryView } from './components/DomainRegistryView';
 
 interface Brand {
   id: string;
@@ -76,6 +77,7 @@ interface SeoFinding {
 
 type TabType =
   | 'scorecards'
+  | 'domains'
   | 'approvals'
   | 'opportunities'
   | 'workflows'
@@ -1023,6 +1025,7 @@ export function App() {
       <nav style={{ display: 'flex', padding: '0 24px', backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)', gap: '16px', overflowX: 'auto' }}>
         {[
           { key: 'scorecards', label: 'Scorecards' },
+          { key: 'domains', label: '🌐 Domain Registry & Health (26)' },
           { key: 'approvals', label: `Approvals (${approvals.length})` },
           { key: 'opportunities', label: 'Opportunities' },
           { key: 'crawler', label: '🕸️ Web Crawler v2' },
@@ -1081,6 +1084,9 @@ export function App() {
             ))}
           </div>
         )}
+
+        {/* TAB: Multi-Domain Registry & Health Matrix */}
+        {activeTab === 'domains' && <DomainRegistryView />}
 
         {/* TAB 2: Approvals Queue */}
         {activeTab === 'approvals' && (

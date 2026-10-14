@@ -43,8 +43,22 @@ describe('Safety Boundaries', () => {
       expect(() => assertSafeOutboundUrl('file:///etc/passwd')).toThrow(SafetyViolationError);
     });
 
-    it('allows valid public URLs', () => {
+    it('blocks URLs with embedded credentials', () => {
+      expect(() => assertSafeOutboundUrl('http://admin:secret123@example.com/api')).toThrow(
+        /embedded credentials/
+      );
+    });
+
+    it('blocks URLs with prohibited/non-standard ports', () => {
+      expect(() => assertSafeOutboundUrl('http://example.com:22/ssh')).toThrow(/port.*not permitted/);
+      expect(() => assertSafeOutboundUrl('http://example.com:8080/api')).toThrow(/port.*not permitted/);
+      expect(() => assertSafeOutboundUrl('https://example.com:8443/api')).toThrow(/port.*not permitted/);
+    });
+
+    it('allows valid public URLs with standard ports', () => {
       expect(() => assertSafeOutboundUrl('https://example.com/sitemap.xml')).not.toThrow();
+      expect(() => assertSafeOutboundUrl('https://example.com:443/sitemap.xml')).not.toThrow();
+      expect(() => assertSafeOutboundUrl('http://example.com:80/robots.txt')).not.toThrow();
       expect(() => assertSafeOutboundUrl('https://news.ycombinator.com/rss')).not.toThrow();
     });
   });

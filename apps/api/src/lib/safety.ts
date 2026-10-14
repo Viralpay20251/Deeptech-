@@ -104,6 +104,22 @@ export function assertSafeOutboundUrl(url: string): void {
         { url, host }
       );
     }
+
+    if (parsed.username || parsed.password) {
+      throw new SafetyViolationError(
+        `Outbound URL contains embedded credentials (SSRF & credential leakage protection).`,
+        'SSRF_EMBEDDED_CREDENTIALS',
+        { url }
+      );
+    }
+
+    if (parsed.port && parsed.port !== '80' && parsed.port !== '443') {
+      throw new SafetyViolationError(
+        `Outbound URL port "${parsed.port}" is not permitted. Only standard HTTP (80) and HTTPS (443) are allowed.`,
+        'SSRF_PROHIBITED_PORT',
+        { url, port: parsed.port }
+      );
+    }
   } catch (err) {
     if (err instanceof SafetyViolationError) throw err;
     throw new SafetyViolationError(
