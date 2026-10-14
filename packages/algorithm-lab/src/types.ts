@@ -61,7 +61,7 @@ export interface RankingMetrics {
   precisionAt10: number;
   recallAt10: number;
   map: number;
-  intraListDistance?: number;
+  intraListDistance?: number | undefined;
 }
 
 export interface EvaluationReport {

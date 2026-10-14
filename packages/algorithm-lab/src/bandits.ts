@@ -202,10 +202,19 @@ export class LinUCBBandit {
     // Update A: A += x * x^T
     for (let i = 0; i < this.dimension; i++) {
       const x_i = contextVector[i] ?? 0;
-      b_arm[i] += reward * x_i;
-      for (let j = 0; j < this.dimension; j++) {
-        const x_j = contextVector[j] ?? 0;
-        A_arm[i]![j] += x_i * x_j;
+      const b_val = b_arm[i];
+      if (b_val !== undefined) {
+        b_arm[i] = b_val + reward * x_i;
+      }
+      const A_row = A_arm[i];
+      if (A_row) {
+        for (let j = 0; j < this.dimension; j++) {
+          const x_j = contextVector[j] ?? 0;
+          const A_val = A_row[j];
+          if (A_val !== undefined) {
+            A_row[j] = A_val + x_i * x_j;
+          }
+        }
       }
     }
   }
