@@ -16,6 +16,15 @@ import { logger } from '../lib/logger.js';
 import { query } from '../lib/db.js';
 import { sanitiseExternalContent, detectPromptInjection, SafetyViolationError } from '../lib/safety.js';
 
+export class ModelProviderError extends Error {
+  public readonly code: 'PROVIDER_NOT_CONFIGURED' | 'PROVIDER_UNAVAILABLE';
+  constructor(message: string, code: 'PROVIDER_NOT_CONFIGURED' | 'PROVIDER_UNAVAILABLE') {
+    super(message);
+    this.name = 'ModelProviderError';
+    this.code = code;
+  }
+}
+
 export interface ModelRequestOptions {
   task_id?: string;
   workspace_id?: string;
@@ -94,6 +103,15 @@ export class ModelGateway {
     if (hasLiveProvider) {
       result = await this.callLiveProvider(options, assembledContent);
     } else {
+      // Production must never silently fall back to simulator
+      const isTest = env.NODE_ENV === 'test' && process.env['TEST_LIVE_OLLAMA'] !== 'true';
+      if (!isTest) {
+        throw new ModelProviderError(
+          `PROVIDER_NOT_CONFIGURED: MODEL_PROVIDER=${env.MODEL_PROVIDER} has no valid API key configured. ` +
+          `Set OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_AI_API_KEY, or configure a reachable OLLAMA_BASE_URL.`,
+          'PROVIDER_NOT_CONFIGURED'
+        );
+      }
       result = this.callDeterministicSimulator(options, assembledContent);
     }
 
@@ -177,8 +195,66 @@ export class ModelGateway {
       };
     }
 
-    // Default fallback to simulator
-    return this.callDeterministicSimulator(options, content);
+    // Anthropic implementation
+    if (env.MODEL_PROVIDER === 'anthropic' && env.ANTHROPIC_API_KEY) {
+      const Anthropic = (await import('@anthropic-ai/sdk')).default;
+      const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+      const msg = await client.messages.create({
+        model: 'claude-3-haiku-20240307',
+        max_tokens: options.max_tokens ?? 2000,
+        system: options.system_prompt,
+        messages: [{ role: 'user', content }],
+      });
+      const pTokens = msg.usage.input_tokens;
+      const cTokens = msg.usage.output_tokens;
+      const cost = (pTokens / 1000) * 0.00025 + (cTokens / 1000) * 0.00125;
+      return {
+        text: msg.content[0]?.type === 'text' ? msg.content[0].text : '',
+        model: msg.model,
+        provider: 'anthropic',
+        prompt_tokens: pTokens,
+        completion_tokens: cTokens,
+        cost_usd: cost,
+        is_simulated: false,
+      };
+    }
+
+    // Google AI implementation via standard REST API
+    if (env.MODEL_PROVIDER === 'google' && env.GOOGLE_AI_API_KEY) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GOOGLE_AI_API_KEY}`;
+      const payload = {
+        contents: [{ parts: [{ text: options.system_prompt + '\n\n' + content }] }],
+      };
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new ModelProviderError(`Google AI API error HTTP ${response.status}: ${errText}`, 'PROVIDER_UNAVAILABLE');
+      }
+      const data = (await response.json()) as any;
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+      const pTokens = data.usageMetadata?.promptTokenCount ?? 100;
+      const cTokens = data.usageMetadata?.candidatesTokenCount ?? 50;
+      const cost = (pTokens / 1000) * 0.000075 + (cTokens / 1000) * 0.0003;
+      return {
+        text,
+        model: 'gemini-1.5-flash',
+        provider: 'google',
+        prompt_tokens: pTokens,
+        completion_tokens: cTokens,
+        cost_usd: cost,
+        is_simulated: false,
+      };
+    }
+
+    // No live provider matched — throw instead of silently simulating
+    throw new ModelProviderError(
+      `PROVIDER_NOT_CONFIGURED: MODEL_PROVIDER=${env.MODEL_PROVIDER} is configured but has no matching implementation or missing API key.`,
+      'PROVIDER_NOT_CONFIGURED'
+    );
   }
 
   /**
@@ -256,8 +332,10 @@ export class ModelGateway {
         is_simulated: false,
       };
     } catch (err) {
-      logger.warn({ err: (err as Error).message, baseUrl, model }, 'Ollama provider error; falling back to deterministic simulator');
-      return this.callDeterministicSimulator(options, content);
+      throw new ModelProviderError(
+        `PROVIDER_UNAVAILABLE: Ollama at ${baseUrl} failed for model ${model}: ${(err as Error).message}`,
+        'PROVIDER_UNAVAILABLE'
+      );
     }
   }
 

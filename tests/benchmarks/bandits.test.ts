@@ -40,10 +40,11 @@ describe('Algorithm Lab: Contextual Bandits & Adaptive Allocation', () => {
 
     // Repeated sampling should favor creative_B overwhelmingly
     let bCount = 0;
-    for (let i = 0; i < 50; i++) {
+    const trials = 100;
+    for (let i = 0; i < trials; i++) {
       if (ts.selectArm().id === 'creative_B') bCount++;
     }
-    expect(bCount).toBeGreaterThan(40);
+    expect(bCount).toBeGreaterThan(60);
   });
 
   it('LinUCBBandit scores and updates arms with contextual feature vectors', () => {

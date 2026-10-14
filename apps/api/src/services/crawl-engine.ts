@@ -57,7 +57,7 @@ export interface PageSnapshotData {
 }
 
 export class CrawlEngineService {
-  private static readonly USER_AGENT = 'AutonomousGrowthOS-DiscoveryBot/2.0 (+https://growth-os.internal/bot)';
+  private static readonly USER_AGENT = 'AutonomousGrowthOS-DiscoveryBot/2.0 (+https://deeptech-taupe.vercel.app/bot)';
   private static readonly TIMEOUT_MS = 8000;
   private static readonly MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 

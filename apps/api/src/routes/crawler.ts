@@ -148,8 +148,31 @@ crawlerRouter.post('/inspect-url', async (req: Request, res: Response) => {
   }
 });
 
-// ─── GET & POST /worker/process-next (For Vercel Crons & background triggers) ─
-crawlerRouter.all('/worker/process-next', async (_req: Request, res: Response) => {
+// ─── POST /worker/process-next (Protected Vercel Cron / internal worker trigger) ─
+// Requires CRON_SECRET header: x-cron-secret or Authorization: Bearer <secret>
+crawlerRouter.post('/worker/process-next', async (req: Request, res: Response) => {
+  const cronSecret = process.env['CRON_SECRET'];
+  if (cronSecret) {
+    const supplied =
+      req.headers['x-cron-secret'] ||
+      req.headers['authorization']?.replace(/^Bearer\s+/i, '');
+    // Timing-safe comparison using timingSafeEqual
+    const { timingSafeEqual } = await import('crypto');
+    const expected = Buffer.from(cronSecret, 'utf8');
+    const actual = Buffer.from(String(supplied ?? ''), 'utf8');
+    const safe = expected.length === actual.length && timingSafeEqual(expected, actual);
+    if (!safe) {
+      res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Invalid or missing CRON_SECRET.' } });
+      return;
+    }
+  } else {
+    // No secret configured — only allow in non-production
+    if (process.env['NODE_ENV'] === 'production') {
+      res.status(503).json({ success: false, error: { code: 'NOT_CONFIGURED', message: 'CRON_SECRET is not set. Worker endpoint disabled in production until secret is configured.' } });
+      return;
+    }
+  }
+
   try {
     const { CrawlerWorker } = await import('../workers/crawler-worker.js');
     const result = await CrawlerWorker.processNextJob();

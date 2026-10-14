@@ -3,39 +3,19 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/index"
-    },
-    {
-      "source": "/health",
-      "destination": "/api/index"
-    },
-    {
-      "source": "/p/(.*)",
-      "destination": "/api/index"
-    },
-    {
-      "source": "/r/(.*)",
-      "destination": "/api/index"
-    },
-    {
-      "source": "/sitemap.xml",
-      "destination": "/api/index"
-    },
-    {
-      "source": "/robots.txt",
-      "destination": "/api/index"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
+    { "source": "/api/(.*)", "destination": "/api/index" },
+    { "source": "/health", "destination": "/api/index" },
+    { "source": "/p/(.*)", "destination": "/api/index" },
+    { "source": "/r/(.*)", "destination": "/api/index" },
+    { "source": "/sitemap.xml", "destination": "/api/index" },
+    { "source": "/robots.txt", "destination": "/api/index" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ],
   "crons": [
     {
       "path": "/api/v1/crawler/worker/process-next",
-      "schedule": "0 4 * * *"
+      "schedule": "*/5 * * * *",
+      "description": "Crawler worker — processes one pending crawl job per tick. Protected by CRON_SECRET."
     }
   ]
 }

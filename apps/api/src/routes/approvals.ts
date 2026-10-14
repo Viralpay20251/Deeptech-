@@ -50,6 +50,13 @@ approvalsRouter.post('/:id/decide', async (req: Request, res: Response) => {
     [workspaceId]
   );
   const userId = userRes.rows[0]?.id ?? null;
+  if (!userId) {
+    res.status(401).json({
+      success: false,
+      error: { code: 'OPERATOR_REQUIRED', message: 'No authorized operator found in workspace. Approvals require a verified operator identity.' },
+    });
+    return;
+  }
 
   if (decision !== 'approved' && decision !== 'rejected') {
     res.status(400).json({

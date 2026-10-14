@@ -52,8 +52,19 @@ killSwitchesRouter.post('/activate', async (req: Request, res: Response) => {
     return;
   }
 
-  // Operator user id
-  const userId = '00000000-0000-0000-0000-000000000001';
+  // Look up authorized operator in workspace
+  const userRes = await query<{ id: string }>(
+    `SELECT id FROM users WHERE workspace_id = $1 AND role IN ('workspace_admin', 'operator') ORDER BY created_at ASC LIMIT 1`,
+    [workspace_id]
+  );
+  const userId = userRes.rows[0]?.id ?? null;
+  if (!userId) {
+    res.status(401).json({
+      success: false,
+      error: { code: 'OPERATOR_REQUIRED', message: 'No authorized operator found in workspace. Kill switch requires a verified operator identity.' },
+    });
+    return;
+  }
 
   try {
     const result = await query<{ id: string }>(

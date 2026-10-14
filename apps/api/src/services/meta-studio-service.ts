@@ -1323,12 +1323,18 @@ export class MetaStudioService {
         throw err;
       }
     } else {
-      // Look up default operator in workspace
+      // Look up authorized operator in workspace
       const defaultUserRes = await query<{ id: string }>(
         `SELECT id FROM users WHERE workspace_id = $1 AND role IN ('workspace_admin', 'operator', 'reviewer', 'publisher') ORDER BY created_at ASC LIMIT 1`,
         [workspaceId]
       );
-      effectiveOperatorId = defaultUserRes.rows[0]?.id || '00000000-0000-0000-0000-000000000001';
+      if (!defaultUserRes.rows.length) {
+        const err = new Error(`No authorized operator found for workspace ${workspaceId}. Valid operator identity is required to decide proposals.`);
+        (err as any).statusCode = 401;
+        (err as any).code = 'OPERATOR_AUTHENTICATION_REQUIRED';
+        throw err;
+      }
+      effectiveOperatorId = defaultUserRes.rows[0]!.id;
     }
 
     // 4. Grounding validation when approving

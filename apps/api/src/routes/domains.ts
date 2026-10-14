@@ -77,8 +77,28 @@ domainsRouter.get('/summary', async (req: Request, res: Response) => {
       duplicateOf: d.duplicate_of_hostname,
     }));
 
+    const timestamps = domains
+      .map((d) => d.last_checked_at)
+      .filter((t): t is string => Boolean(t))
+      .map((t) => new Date(t).getTime());
+
+    const latestCheckedAt = timestamps.length ? new Date(Math.max(...timestamps)).toISOString() : null;
+    const oldestCheckedAt = timestamps.length ? new Date(Math.min(...timestamps)).toISOString() : null;
+    const ageHours = latestCheckedAt ? (Date.now() - new Date(latestCheckedAt).getTime()) / (1000 * 60 * 60) : null;
+    const freshness = ageHours === null ? 'not_tested' : ageHours > 24 ? 'stale' : 'recent';
+
     res.json({
       success: true,
+      execution_mode: 'live',
+      source: 'persisted_history',
+      is_live_probe: false,
+      observed_at: latestCheckedAt,
+      freshness,
+      caveats: [
+        'Summary is calculated from the last persisted health audit results in registered_domains.',
+        'This represents historical observations and is not a real-time probe.',
+        'To execute a real-time probe across all domains, POST to /api/v1/domains/check-health with { all: true }.',
+      ],
       data: {
         totalRegistered: total,
         authoritativeCount: authoritative.length,
@@ -93,6 +113,11 @@ domainsRouter.get('/summary', async (req: Request, res: Response) => {
           httpResponding: domains.filter((d) => d.http_status !== null && d.http_status >= 200 && d.http_status < 400).length,
           robotsTxtFound: domains.filter((d) => d.robots_policy_status === 'passed').length,
           sitemapFound: domains.filter((d) => d.sitemap_status === 'passed').length,
+        },
+        auditTimestamps: {
+          latestCheckedAt,
+          oldestCheckedAt,
+          ageHours: ageHours !== null ? Math.round(ageHours * 10) / 10 : null,
         },
       },
     });

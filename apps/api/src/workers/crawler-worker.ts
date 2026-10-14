@@ -11,6 +11,7 @@
 import { query } from '../lib/db.js';
 import { logger } from '../lib/logger.js';
 import { CrawlEngineService } from '../services/crawl-engine.js';
+import { JobQueueService } from '../services/job-queue-service.js';
 
 export class CrawlerWorker {
   private static isRunning = false;
@@ -26,6 +27,9 @@ export class CrawlerWorker {
     error?: string;
   }> {
     try {
+      // Record idle heartbeat
+      await JobQueueService.recordHeartbeat('vercel_cron', null);
+
       // 1. Atomically claim next pending job using SKIP LOCKED
       const claimRes = await query<{ id: string; label: string; max_pages: number }>(
         `UPDATE crawl_jobs
@@ -45,10 +49,12 @@ export class CrawlerWorker {
       }
 
       const job = claimRes.rows[0];
+      await JobQueueService.recordHeartbeat('vercel_cron', job.id);
       logger.info({ jobId: job.id, label: job.label, maxPages: job.max_pages }, 'Crawler worker claimed pending job');
 
       // 2. Execute bounded crawl
       const result = await CrawlEngineService.executeCrawlJob(job.id);
+      await JobQueueService.recordHeartbeat('vercel_cron', null);
       logger.info({ jobId: job.id, pagesCrawled: result.pagesCrawled, error: result.error }, 'Crawler worker completed job');
 
       return {

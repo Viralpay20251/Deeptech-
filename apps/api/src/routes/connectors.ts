@@ -546,9 +546,12 @@ connectorsRouter.post('/sync', async (req: Request, res: Response) => {
       const auditUrl = target_url || 'https://chatr.chat';
       const connector = new PageSpeedCruxConnector();
       const auditRes = await connector.runAudit({ url: auditUrl }).catch(() => null);
-      rowsFetched = auditRes ? 1 : 0;
-      rowsUpserted = auditRes ? 1 : 0;
-      syncResultData = auditRes ? { ...auditRes } : { status: 'mock_audit_fallback' };
+      if (!auditRes) {
+        throw new Error(`PageSpeed audit returned null for URL: ${auditUrl}. The API may be unavailable or the URL is not accessible.`);
+      }
+      rowsFetched = 1;
+      rowsUpserted = 1;
+      syncResultData = { ...auditRes };
     } else if (connector_type === 'crossref_openalex') {
       const term = query_term || 'autonomous messaging agent';
       const connector = new CrossrefOpenalexConnector();
@@ -564,10 +567,12 @@ connectorsRouter.post('/sync', async (req: Request, res: Response) => {
       rowsUpserted = entity ? 1 : 0;
       syncResultData = entity ? { ...entity } : { status: 'not_found' };
     } else {
-      // General connector sync acknowledgement
-      rowsFetched = 1;
-      rowsUpserted = 1;
-      syncResultData = { notice: `Sync executed for ${connector_type}` };
+      // Connector type has no implemented sync adapter
+      throw new Error(
+        `UNSUPPORTED_CONNECTOR: connector_type='${connector_type}' has no implemented sync adapter. ` +
+        `Supported types: sitemap_rss_inspector, sitemap_rss, indexnow, pagespeed_crux, crossref_openalex, wikipedia_wikidata. ` +
+        `For OAuth connectors (google_search_console, google_analytics_4, linkedin, meta), use the /auth/ flow first.`
+      );
     }
 
     // 2. Mark sync run as completed

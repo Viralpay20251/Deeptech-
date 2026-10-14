@@ -37,7 +37,9 @@ const envSchema = z.object({
   MODEL_BUDGET_PER_TASK_USD: z.coerce.number().default(0.50),
   MODEL_BUDGET_DAILY_USD: z.coerce.number().default(10.00),
 
-  QUEUE_DRIVER: z.enum(['memory', 'pg-boss']).default('memory'),
+  QUEUE_DRIVER: z.enum(['memory', 'pg-boss']).default(
+    process.env['NODE_ENV'] === 'production' ? 'pg-boss' : 'memory'
+  ),
   QUEUE_MAX_CONCURRENCY: z.coerce.number().default(5),
   QUEUE_RETRY_LIMIT: z.coerce.number().default(3),
 
@@ -64,6 +66,9 @@ const envSchema = z.object({
   // Protected systems — comma-separated lists used by safety checks
   PROTECTED_DB_HOSTS: z.string().default(''),
   PROTECTED_PROJECT_IDS: z.string().default(''),
+
+  CRON_SECRET: z.string().min(16).optional(),
+  OPERATING_MODE: z.enum(['live', 'demo']).default('live'),
 });
 
 function loadEnv() {
@@ -90,6 +95,14 @@ function loadEnv() {
 }
 
 export const env = loadEnv();
+
+// Production safety assertion: refuse to start if queue driver is memory in production
+if (env.NODE_ENV === 'production' && env.QUEUE_DRIVER === 'memory') {
+  throw new Error(
+    '❌ Production safety: QUEUE_DRIVER=memory is not durable across serverless restarts. ' +
+    'Set QUEUE_DRIVER=pg-boss and ensure DATABASE_URL is configured.'
+  );
+}
 
 export type Env = z.infer<typeof envSchema>;
 

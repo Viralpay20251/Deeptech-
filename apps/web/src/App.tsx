@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { DomainRegistryView } from './components/DomainRegistryView';
+import { DurableQueueView } from './components/DurableQueueView';
 
 interface Brand {
   id: string;
@@ -78,6 +79,7 @@ interface SeoFinding {
 type TabType =
   | 'scorecards'
   | 'domains'
+  | 'queue'
   | 'approvals'
   | 'opportunities'
   | 'workflows'
@@ -226,49 +228,10 @@ export function App() {
         setBrands(data.data);
         setSelectedBrandId(data.data[0].id);
       }
-    } catch {
-      setBrands([
-        {
-          id: '00000000-0000-0000-0001-000000000001',
-          slug: 'chatr',
-          display_name: 'CHATR',
-          base_url: 'https://chatr.chat',
-          is_protected_production: true,
-          config: {
-            secondary_domains: ['https://chatrchat.in'],
-            voice_guidelines: 'Clear, modern, tech-forward, authentic.',
-            active_user_event_definition: 'Meaningful AI productivity interaction in 30-day window.',
-            prohibited_topics: ['unverified_agi_claims', 'fabricated_benchmarks'],
-            allowed_channels: ['organic_search', 'linkedin', 'x_twitter', 'youtube'],
-          },
-        },
-        {
-          id: '00000000-0000-0000-0001-000000000002',
-          slug: 'talentxcel',
-          display_name: 'TalentXcel',
-          base_url: 'https://talentxcel.in',
-          is_protected_production: true,
-          config: {
-            voice_guidelines: 'Professional, empowering, pragmatic, actionable.',
-            active_user_event_definition: 'Verified career action: application, CV export, or tool use.',
-            prohibited_topics: ['fabricated_job_listings', 'invented_salary_averages'],
-            allowed_channels: ['organic_search', 'linkedin', 'youtube', 'newsletters'],
-          },
-        },
-        {
-          id: '00000000-0000-0000-0001-000000000003',
-          slug: 'nuty-tales',
-          display_name: 'Nuty Tales',
-          base_url: 'https://nutytales.com',
-          is_protected_production: true,
-          config: {
-            voice_guidelines: 'Warm, artisanal, gastronomic, wholesome.',
-            active_user_event_definition: 'Catalogue/recipe view. Purchasing customers reported strictly via paid orders.',
-            prohibited_topics: ['medicinal_cure_claims', 'fake_urgency_timers'],
-            allowed_channels: ['organic_search', 'instagram', 'meta', 'pinterest'],
-          },
-        },
-      ]);
+    } catch (err) {
+      // Do NOT populate hardcoded brands on API failure — empty state forces user to resolve the connection.
+      setBrands([]);
+      console.error('[fetchBrands] API unavailable:', err);
     }
   };
 
@@ -1026,6 +989,7 @@ export function App() {
         {[
           { key: 'scorecards', label: 'Scorecards' },
           { key: 'domains', label: '🌐 Domain Registry & Health (26)' },
+          { key: 'queue', label: '⚙️ Queue & Workers' },
           { key: 'approvals', label: `Approvals (${approvals.length})` },
           { key: 'opportunities', label: 'Opportunities' },
           { key: 'crawler', label: '🕸️ Web Crawler v2' },
@@ -1087,6 +1051,9 @@ export function App() {
 
         {/* TAB: Multi-Domain Registry & Health Matrix */}
         {activeTab === 'domains' && <DomainRegistryView />}
+
+        {/* TAB: Durable Job Queue & Worker Health */}
+        {activeTab === 'queue' && <DurableQueueView />}
 
         {/* TAB 2: Approvals Queue */}
         {activeTab === 'approvals' && (
