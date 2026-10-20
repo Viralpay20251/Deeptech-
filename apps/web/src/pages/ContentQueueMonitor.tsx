@@ -15,7 +15,7 @@ export interface ContentQueueItem {
   id: string;
   brand: 'TalentXcel' | 'CHATR' | 'Nuty Tales' | 'TX Academy';
   brandSlug: string;
-  platform: 'youtube' | 'tiktok' | 'instagram' | 'twitter' | 'linkedin';
+  platform: 'youtube' | 'facebook' | 'instagram' | 'twitter' | 'linkedin';
   hookLine: string;
   caption: string;
   script: string;
@@ -58,7 +58,7 @@ export function ContentQueueMonitor() {
       hookLine: 'The 2026 AI Infrastructure Compensation Matrix is here.',
       caption: 'We analyzed 1,400+ verified engineering offers across US, EU, and India. Key takeaway: agent orchestration engineers are out-earning traditional frontend leads by 38%.',
       script: 'Card carousel breakdown of median compensation bands across tiers and remote hubs.',
-      firstComment: 'Download the complete verified benchmark sheet: https://talentxcel.com/insights/ai-salaries-2026',
+      firstComment: 'Download the complete verified benchmark sheet: https://talentxcel.in/insights/ai-salaries-2026',
       scheduledTime: 'Today at 17:00',
       stage: 'media_ready',
       thumbnailUrl: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=400&auto=format&fit=crop&q=80',
@@ -82,7 +82,7 @@ export function ContentQueueMonitor() {
       id: 'cq-4',
       brand: 'CHATR',
       brandSlug: 'chatr',
-      platform: 'tiktok',
+      platform: 'facebook',
       hookLine: 'POV: Your boss still sends you 300-word emails when a quick 10-second video answers everything.',
       caption: 'Save your team from reading marathons. Send interactive video reactions in one click. #WFH #RemoteWork #SlackAlternative',
       script: 'Humorous reaction face cutting into ultra-fast video creation workflow.',
@@ -173,8 +173,8 @@ export function ContentQueueMonitor() {
         return <Linkedin size={14} color="#3b82f6" />;
       case 'twitter':
         return <Twitter size={14} color="#60a5fa" />;
-      case 'tiktok':
-        return <Video size={14} color="#06b6d4" />;
+      case 'facebook':
+        return <Video size={14} color="#1877f2" />;
       default:
         return <Video size={14} />;
     }
@@ -237,7 +237,7 @@ export function ContentQueueMonitor() {
           >
             <option value="all">All Platforms</option>
             <option value="youtube">YouTube</option>
-            <option value="tiktok">TikTok</option>
+            <option value="facebook">Facebook</option>
             <option value="instagram">Instagram</option>
             <option value="twitter">Twitter / X</option>
             <option value="linkedin">LinkedIn</option>

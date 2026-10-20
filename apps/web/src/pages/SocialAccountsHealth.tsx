@@ -17,7 +17,7 @@ export interface SocialAccountItem {
   id: string;
   brand: 'TalentXcel' | 'CHATR' | 'Nuty Tales' | 'TX Academy';
   brandSlug: string;
-  platform: 'youtube' | 'tiktok' | 'instagram' | 'twitter' | 'linkedin';
+  platform: 'youtube' | 'facebook' | 'instagram' | 'twitter' | 'linkedin';
   handle: string;
   profileUrl: string;
   healthStatus: 'healthy' | 'shadowbanned' | 'restricted' | 'warning';
@@ -87,9 +87,9 @@ export function SocialAccountsHealth() {
       id: 'acc-5',
       brand: 'CHATR',
       brandSlug: 'chatr',
-      platform: 'tiktok',
-      handle: '@chatr.video',
-      profileUrl: 'https://tiktok.com/@chatr.video',
+      platform: 'facebook',
+      handle: 'ChatrOfficial',
+      profileUrl: 'https://facebook.com/ChatrOfficial',
       healthStatus: 'healthy',
       lastPostedAt: '3h ago',
       dailyPostsUsed: 3,
@@ -138,11 +138,11 @@ export function SocialAccountsHealth() {
     },
     {
       id: 'acc-9',
-      brand: 'TX Academy',
-      brandSlug: 'tx-academy',
-      platform: 'tiktok',
-      handle: '@txacademy.ai',
-      profileUrl: 'https://tiktok.com/@txacademy.ai',
+      brand: 'TalentXcel',
+      brandSlug: 'talentxcel',
+      platform: 'facebook',
+      handle: 'TalentXcelJobs',
+      profileUrl: 'https://facebook.com/TalentXcelJobs',
       healthStatus: 'healthy',
       lastPostedAt: '1h ago',
       dailyPostsUsed: 3,
@@ -236,8 +236,8 @@ export function SocialAccountsHealth() {
         return <Linkedin size={16} color="#3b82f6" />;
       case 'twitter':
         return <Twitter size={16} color="#60a5fa" />;
-      case 'tiktok':
-        return <Video size={16} color="#06b6d4" />;
+      case 'facebook':
+        return <Video size={16} color="#1877f2" />;
       default:
         return <Video size={16} />;
     }
@@ -483,7 +483,7 @@ export function SocialAccountsHealth() {
           >
             <option value="all">All Platforms</option>
             <option value="youtube">YouTube</option>
-            <option value="tiktok">TikTok</option>
+            <option value="facebook">Facebook</option>
             <option value="instagram">Instagram</option>
             <option value="twitter">Twitter / X</option>
             <option value="linkedin">LinkedIn</option>

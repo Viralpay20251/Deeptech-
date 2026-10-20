@@ -84,7 +84,7 @@ export function OmniPulseOverview() {
       brandSlug: 'tx-academy',
       todayViews: 16420,
       viewsChange: '+5.4%',
-      topPlatform: 'TikTok',
+      topPlatform: 'YouTube Shorts',
       topPostTitle: 'How to Build an Agentic Workflow in 5 Minutes',
       topPostViews: 8900,
       queueDepth: { pending: 2, mediaReady: 1, posted: 8 },
@@ -295,7 +295,7 @@ export function OmniPulseOverview() {
             44 Posts
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-            <span>5 Platforms: YouTube, TikTok, IG, X, LinkedIn</span>
+            <span>5 Platforms: YouTube, Facebook, IG, X, LinkedIn</span>
           </div>
         </div>
 
