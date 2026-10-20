@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { DomainRegistryView } from './components/DomainRegistryView';
 import { DurableQueueView } from './components/DurableQueueView';
 import { OmniPulseOverview } from './pages/OmniPulseOverview';

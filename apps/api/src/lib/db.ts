@@ -33,14 +33,35 @@ function assertNotProtectedDB(url: string): void {
   }
 }
 
-assertNotProtectedDB(env.DATABASE_URL);
+/**
+ * Automatically rewrites Supabase session pooler (port 5432) to transaction pooler (port 6543).
+ * Supabase caps session mode at pool_size: 15, which causes (EMAXCONNSESSION) crashes in
+ * serverless lambdas (Vercel). Port 6543 uses transaction mode (PgBouncer) for massive concurrency.
+ */
+function getOptimizedDatabaseUrl(rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.hostname.includes('pooler.supabase.com') && (parsed.port === '5432' || !parsed.port)) {
+      parsed.port = '6543';
+      return parsed.toString();
+    }
+    return rawUrl;
+  } catch {
+    return rawUrl;
+  }
+}
+
+const activeDbUrl = getOptimizedDatabaseUrl(env.DATABASE_URL);
+assertNotProtectedDB(activeDbUrl);
+
+const isServerless = Boolean(process.env['VERCEL'] || process.env['AWS_LAMBDA_FUNCTION_NAME']);
 
 export const pool = new Pool({
-  connectionString: env.DATABASE_URL,
+  connectionString: activeDbUrl,
   min: 0,
-  max: env.NODE_ENV === 'test' ? 2 : Math.min(env.DATABASE_POOL_MAX, 4),
-  idleTimeoutMillis: 2000,
-  connectionTimeoutMillis: 10000,
+  max: isServerless ? 1 : (env.NODE_ENV === 'test' ? 2 : Math.min(env.DATABASE_POOL_MAX, 4)),
+  idleTimeoutMillis: 1500,
+  connectionTimeoutMillis: 8000,
   ssl: env.DATABASE_SSL ? { rejectUnauthorized: false } : false,
   application_name: 'autonomous-growth-os',
 });
