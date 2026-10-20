@@ -269,7 +269,10 @@ export function DomainRegistryView() {
             <strong>Distinct Origins Preserved:</strong> <code>employer.talentxcel.in</code> (singular hiring portal) and <code>employers.talentxcel.in</code> (plural GSC property) are strictly preserved as distinct. Automatic consolidation is barred.
           </li>
           <li>
-            <strong>Excluded Origins Barred from Crawl:</strong> <code>www.talentxcel.net</code>, <code>auth.talentxcel.in</code>, and <code>cdn.talentxcel.in</code> are explicitly marked excluded and cannot be scheduled for active crawling or link discovery.
+            <strong>Independent Platforms Enforced:</strong> <code>talentxcel.in</code> and <code>talentxcel.net</code> are separate domains and separate platforms. Cross-platform canonical consolidation or redirection between .in and .net is strictly prohibited.
+          </li>
+          <li>
+            <strong>Excluded Origins Barred from Crawl:</strong> Internal infrastructure endpoints (<code>auth.talentxcel.in</code>, <code>cdn.talentxcel.in</code>) and legacy unverified references are barred from active crawling or link discovery.
           </li>
           <li>
             <strong>SSRF Protection:</strong> Every outbound probe URL and every redirect hop is independently validated against private IP ranges, cloud metadata addresses, and prohibited ports.

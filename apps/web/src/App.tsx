@@ -10,6 +10,7 @@ import { PageviewVelocityMonitor } from './components/dashboard/PageviewVelocity
 import { authFetch, getStoredUser, ensureOperatorSession, type OperatorUser } from './lib/apiClient';
 import { AuthenticationHubModal } from './components/AuthenticationHubModal';
 import { SidebarNav } from './components/SidebarNav';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { PanelLeft, PanelLeftClose } from 'lucide-react';
 
 interface Brand {
@@ -1103,6 +1104,7 @@ export function App() {
 
         {/* ─── Main Content Area ─────────────────────────────────────────── */}
         <main style={{ flex: 1, padding: '24px', overflowY: 'auto', backgroundColor: 'var(--bg-primary)' }}>
+        <ErrorBoundary>
         {/* OmniPulse Autonomous Growth Pages */}
         {activeTab === 'omnipulse' && <OmniPulseOverview />}
         {activeTab === 'omnipulse_velocity' && <PageviewVelocityMonitor />}
@@ -3373,6 +3375,7 @@ export function App() {
             </div>
           </div>
         )}
+        </ErrorBoundary>
 
         {/* Unified Authentication Hub & GSC Connector Modal */}
         <AuthenticationHubModal

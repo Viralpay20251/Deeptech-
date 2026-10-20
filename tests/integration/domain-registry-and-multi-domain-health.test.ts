@@ -152,6 +152,22 @@ describe('Multi-Domain Registry & Health Matrix Integration', () => {
     expect(patchJson.success).toBe(false);
     expect(patchJson.error.message).toContain('CRITICAL POLICY VIOLATION');
     expect(patchJson.error.message).toContain('distinct properties');
+
+    // Attempting to consolidate or cross-redirect talentxcel.in to talentxcel.net must be blocked
+    const patchCrossRes = await fetch(`${baseUrl}/api/v1/domains/talentxcel.in`, {
+      method: 'PATCH',
+      headers: authHeaders,
+      body: JSON.stringify({
+        intended_canonical_host: 'talentxcel.net',
+        confirmed_by_operator: true,
+      }),
+    });
+
+    expect(patchCrossRes.status).toBe(403);
+    const patchCrossJson = (await patchCrossRes.json()) as any;
+    expect(patchCrossJson.success).toBe(false);
+    expect(patchCrossJson.error.message).toContain('CRITICAL POLICY VIOLATION');
+    expect(patchCrossJson.error.message).toContain('separate domains and separate platforms');
   });
 
   it('3. Enforces exclusion and crawl prevention on legacy domains', async () => {

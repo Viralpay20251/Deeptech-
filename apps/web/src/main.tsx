@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 // Bootstrap operator token for API requests
 const originalFetch = window.fetch;
@@ -25,12 +26,17 @@ fetch('/api/v1/auth/session')
   .then((json) => {
     if (json?.data?.token) {
       localStorage.setItem('growth_os_token', json.data.token);
+      if (json.data.user) {
+        localStorage.setItem('growth_os_user', JSON.stringify(json.data.user));
+      }
     }
   })
   .catch(() => {});
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary fallbackTitle="Autonomous Growth OS Application Error">
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>
 );

@@ -66,20 +66,6 @@ export async function ensureOperatorSession(): Promise<{ token: string; user: Op
     return { token: existingToken, user: existingUser };
   }
 
-  try {
-    const res = await fetch('/api/v1/auth/session');
-    const json = await res.json();
-    if (json.success && json.data?.token) {
-      const token = json.data.token as string;
-      const user = json.data.user as OperatorUser;
-      setStoredSession(token, user);
-      return { token, user };
-    }
-  } catch (err) {
-    console.warn('Operator session auto-bootstrap network error:', err);
-  }
-
-  // Fallback identity if API is still starting
   const fallbackUser: OperatorUser = {
     id: 'c4344661-4a88-46a9-b85d-c65303c37227',
     email: 'operator@growth-os.internal',
@@ -87,6 +73,19 @@ export async function ensureOperatorSession(): Promise<{ token: string; user: Op
     display_name: 'Lead Growth Operator',
     workspace_id: '00000000-0000-0000-0000-000000000001',
   };
+
+  try {
+    const res = await fetch('/api/v1/auth/session');
+    const json = await res.json();
+    if (json.success && json.data?.token) {
+      const token = json.data.token as string;
+      const user: OperatorUser = { ...fallbackUser, ...(json.data.user || {}) };
+      setStoredSession(token, user);
+      return { token, user };
+    }
+  } catch (err) {
+    console.warn('Operator session auto-bootstrap network error:', err);
+  }
 
   return { token: existingToken || '', user: existingUser || fallbackUser };
 }

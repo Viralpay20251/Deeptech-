@@ -10,6 +10,7 @@ import {
   Eye,
   ArrowUpRight,
 } from 'lucide-react';
+import { authFetch } from '../lib/apiClient';
 
 interface BrandMetrics {
   brandName: string;
@@ -110,7 +111,7 @@ export function OmniPulseOverview() {
   const fetchDashboardData = async () => {
     try {
       // 1. Fetch metrics from distribution_metrics API endpoint if available
-      const metricsRes = await fetch('/api/v1/omnipulse/metrics').catch(() => null);
+      const metricsRes = await authFetch('/api/v1/omnipulse/metrics').catch(() => null);
       if (metricsRes && metricsRes.ok) {
         const json = await metricsRes.json();
         if (json.success && json.data) {
@@ -136,20 +137,24 @@ export function OmniPulseOverview() {
       }
 
       // 2. Fetch live trends from trend_signals or demand
-      const trendsRes = await fetch('/api/v1/omnipulse/trends').catch(() => null);
+      const trendsRes = await authFetch('/api/v1/omnipulse/trends').catch(() => null);
       if (trendsRes && trendsRes.ok) {
         const json = await trendsRes.json();
-        if (json.success && json.data) {
+        if (json.success && Array.isArray(json.data)) {
           setTrendingTopics(json.data);
+        } else if (json.success && Array.isArray(json.data?.trends)) {
+          setTrendingTopics(json.data.trends);
         }
       }
 
       // 3. Health check for local services
-      const healthRes = await fetch('/api/v1/omnipulse/services-health').catch(() => null);
+      const healthRes = await authFetch('/api/v1/omnipulse/services-health').catch(() => null);
       if (healthRes && healthRes.ok) {
         const json = await healthRes.json();
-        if (json.success && json.data) {
+        if (json.success && Array.isArray(json.data)) {
           setServices(json.data);
+        } else if (json.success && Array.isArray(json.data?.services)) {
+          setServices(json.data.services);
         }
       }
 
@@ -344,7 +349,7 @@ export function OmniPulseOverview() {
           Brand Distribution Breakdown (4 Autonomous Tenants)
         </h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
-          {brandCards.map((b) => (
+          {(Array.isArray(brandCards) ? brandCards : []).map((b) => (
             <div
               key={b.brandSlug}
               style={{
@@ -445,7 +450,7 @@ export function OmniPulseOverview() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {trendingTopics.map((t) => (
+            {(Array.isArray(trendingTopics) ? trendingTopics : []).map((t) => (
               <div
                 key={t.id}
                 style={{
@@ -493,7 +498,7 @@ export function OmniPulseOverview() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {services.map((s) => (
+            {(Array.isArray(services) ? services : []).map((s) => (
               <div
                 key={s.name}
                 style={{

@@ -183,10 +183,12 @@ export function AuthenticationHubModal({ isOpen, onClose, onSessionUpdated }: Au
       localStorage.removeItem('growth_os_token');
       localStorage.removeItem('growth_os_user');
       const session = await ensureOperatorSession();
-      setCurrentUser(session.user);
+      setCurrentUser(session?.user || null);
+      const displayName = session?.user?.display_name || session?.user?.email || 'Lead Growth Operator';
+      const role = session?.user?.role || 'workspace_admin';
       setNotification({
         type: 'success',
-        message: `✅ Operator session re-issued: ${session.user.display_name} (${session.user.role}) is active for 24 hours.`,
+        message: `✅ Operator session re-issued: ${displayName} (${role}) is active for 24 hours.`,
       });
       if (onSessionUpdated) onSessionUpdated();
     } catch (err) {

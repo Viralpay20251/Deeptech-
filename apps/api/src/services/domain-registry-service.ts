@@ -212,7 +212,22 @@ export class DomainRegistryService {
       }
     }
 
-    // STRICT BOUNDARY ENFORCEMENT 2: Excluded legacy references cannot be enabled for crawling
+    // STRICT BOUNDARY ENFORCEMENT 2: talentxcel.in and talentxcel.net are separate platforms
+    if (updates.intendedCanonicalHost) {
+      const lowerHost = hostname.toLowerCase();
+      const lowerCanonical = updates.intendedCanonicalHost.toLowerCase();
+      if (
+        (lowerHost.endsWith('talentxcel.in') && lowerCanonical.endsWith('talentxcel.net')) ||
+        (lowerHost.endsWith('talentxcel.net') && lowerCanonical.endsWith('talentxcel.in'))
+      ) {
+        throw new Error(
+          'CRITICAL POLICY VIOLATION: talentxcel.in and talentxcel.net are separate domains and separate platforms. ' +
+          'Cross-platform canonical consolidation or redirection between .in and .net is strictly prohibited.'
+        );
+      }
+    }
+
+    // STRICT BOUNDARY ENFORCEMENT 3: Excluded legacy references cannot be enabled for crawling
     const excludedHosts = ['www.talentxcel.net', 'auth.talentxcel.in', 'cdn.talentxcel.in'];
     if (excludedHosts.includes(hostname.toLowerCase()) && updates.allowedForCrawling === true) {
       throw new Error(

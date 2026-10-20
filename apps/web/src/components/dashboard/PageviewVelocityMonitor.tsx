@@ -693,7 +693,7 @@ export function PageviewVelocityMonitor() {
           <div>
             <h3 style={{ fontSize: '15px', fontWeight: 700 }}>21 Canonical Production Hosts Velocity Breakdown</h3>
             <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-              Strictly excluding the 3 barred legacy origins (www.talentxcel.net, auth, cdn) and 2 noindex staging hosts.
+              Strictly preserving separation between talentxcel.in & talentxcel.net platforms, and excluding internal infrastructure endpoints (auth, cdn) and noindex staging hosts.
             </p>
           </div>
           <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
