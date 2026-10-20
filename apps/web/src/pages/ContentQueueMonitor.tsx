@@ -8,6 +8,7 @@ import {
   Linkedin,
   Twitter,
 } from 'lucide-react';
+import { authFetch } from '../lib/apiClient';
 
 export type QueueStage = 'pending' | 'media_ready' | 'scheduled' | 'posted' | 'failed';
 
