@@ -12,6 +12,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { authFetch } from '../lib/apiClient';
 
 export interface RegisteredDomainItem {
   id: string;
@@ -60,9 +61,9 @@ export function DomainRegistryView() {
   const fetchDomains = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/v1/domains');
+      const res = await authFetch('/api/v1/domains');
       const json = await res.json();
-      if (json.success) {
+      if (json.success && Array.isArray(json.data)) {
         setDomains(json.data);
       }
     } catch (err) {
@@ -74,9 +75,9 @@ export function DomainRegistryView() {
 
   const fetchSummary = async () => {
     try {
-      const res = await fetch('/api/v1/domains/summary');
+      const res = await authFetch('/api/v1/domains/summary');
       const json = await res.json();
-      if (json.success) {
+      if (json.success && json.data) {
         setSummary(json.data);
       }
     } catch (err) {
@@ -87,7 +88,7 @@ export function DomainRegistryView() {
   const runSingleAudit = async (hostname: string) => {
     try {
       setAuditingHost(hostname);
-      const res = await fetch('/api/v1/domains/check-health', {
+      const res = await authFetch('/api/v1/domains/check-health', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hostname }),
@@ -110,7 +111,7 @@ export function DomainRegistryView() {
   const runBatchAudit = async () => {
     try {
       setBatchAuditing(true);
-      const res = await fetch('/api/v1/domains/check-health', {
+      const res = await authFetch('/api/v1/domains/check-health', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ all: true }),
@@ -130,12 +131,13 @@ export function DomainRegistryView() {
     }
   };
 
-  const filteredDomains = domains.filter((d) => {
+  const safeDomains = Array.isArray(domains) ? domains : [];
+  const filteredDomains = safeDomains.filter((d) => {
     const matchesBrand = brandFilter === 'all' || d.brand_slug === brandFilter;
     const matchesRole = roleFilter === 'all' || d.host_role === roleFilter;
     const matchesSearch =
       !searchQuery.trim() ||
-      d.hostname.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (d.hostname && d.hostname.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (d.notes && d.notes.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesBrand && matchesRole && matchesSearch;
   });
@@ -296,7 +298,7 @@ export function DomainRegistryView() {
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Brand:</span>
           {[
-            { key: 'all', label: `All (${domains.length})` },
+            { key: 'all', label: `All (${safeDomains.length})` },
             { key: 'talentxcel', label: 'TalentXcel (16)' },
             { key: 'chatr', label: 'CHATR (3)' },
             { key: 'nuty-tales', label: 'Nuty Tales (10)' },

@@ -9,6 +9,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { authFetch } from '../lib/apiClient';
 
 interface QueueMetrics {
   queued: number;
@@ -51,17 +52,17 @@ export function DurableQueueView() {
     setLoading(true);
     try {
       const [metricsRes, jobsRes] = await Promise.all([
-        fetch('/api/v1/queue/metrics'),
-        fetch(`/api/v1/queue/jobs${filterStatus !== 'all' ? `?status=${filterStatus}` : ''}`),
+        authFetch('/api/v1/queue/metrics'),
+        authFetch(`/api/v1/queue/jobs${filterStatus !== 'all' ? `?status=${filterStatus}` : ''}`),
       ]);
 
       const metricsData = await metricsRes.json();
       const jobsData = await jobsRes.json();
 
-      if (metricsData.success) {
+      if (metricsData.success && metricsData.data) {
         setMetrics(metricsData.data);
       }
-      if (jobsData.success) {
+      if (jobsData.success && Array.isArray(jobsData.data)) {
         setJobs(jobsData.data);
       }
       setLastRefreshedAt(new Date().toLocaleTimeString());
@@ -84,7 +85,7 @@ export function DurableQueueView() {
   const handleCancelJob = async (jobId: string) => {
     setCancellingId(jobId);
     try {
-      const res = await fetch(`/api/v1/queue/jobs/${jobId}/cancel`, {
+      const res = await authFetch(`/api/v1/queue/jobs/${jobId}/cancel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ workspace_id: '00000000-0000-0000-0000-000000000001' }),
@@ -273,14 +274,14 @@ export function DurableQueueView() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
-              {jobs.length === 0 ? (
+              {(!jobs || jobs.length === 0) ? (
                 <tr>
                   <td colSpan={6} className="py-8 text-center text-gray-500 text-sm">
                     No jobs found in the queue matching filter "{filterStatus}".
                   </td>
                 </tr>
               ) : (
-                jobs.map((job) => (
+                (jobs || []).map((job) => (
                   <tr key={job.id} className="hover:bg-gray-800/40 transition-colors">
                     <td className="py-3 px-4">
                       <div className="font-mono text-xs text-indigo-300">

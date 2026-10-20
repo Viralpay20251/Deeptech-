@@ -988,7 +988,7 @@ export function App() {
     }
   };
 
-  const selectedBrand = brands.find((b) => b.id === selectedBrandId) || brands[0];
+  const selectedBrand = (brands || []).find((b) => b.id === selectedBrandId) || (brands || [])[0];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
@@ -1046,7 +1046,7 @@ export function App() {
                 fontWeight: 600,
               }}
             >
-              {brands.map((b) => (
+              {(brands || []).map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.display_name} ({b.base_url})
                 </option>
@@ -1137,7 +1137,7 @@ export function App() {
 
         {/* ─── Main Content Area ─────────────────────────────────────────── */}
         <main style={{ flex: 1, padding: '24px', overflowY: 'auto', backgroundColor: 'var(--bg-primary)' }}>
-        <ErrorBoundary>
+        <ErrorBoundary key={activeTab} fallbackTitle={`Module View Notice: ${activeTab}`}>
         {/* OmniPulse Autonomous Growth Pages */}
         {activeTab === 'omnipulse' && <OmniPulseOverview />}
         {activeTab === 'omnipulse_velocity' && <PageviewVelocityMonitor />}
@@ -1149,7 +1149,7 @@ export function App() {
         {/* TAB 1: Growth Scorecards */}
         {activeTab === 'scorecards' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
-            {brands.map((b) => (
+            {(brands || []).map((b) => (
               <div key={b.id} style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '20px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                   <h3 style={{ fontSize: '18px', fontWeight: 700 }}>{b.display_name}</h3>
@@ -1190,13 +1190,13 @@ export function App() {
                 Strict Governance: No asset or campaign may be published without an explicit operator sign-off.
               </p>
             </div>
-            {approvals.length === 0 ? (
+            {(!approvals || approvals.length === 0) ? (
               <div style={{ padding: '48px', textAlign: 'center', backgroundColor: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
                 No pending items in the approval queue. Run a vertical slice workflow above to generate a candidate asset.
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {approvals.map((item) => (
+                {(approvals || []).map((item) => (
                   <div key={item.id} style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '20px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
                       <div>
@@ -1240,10 +1240,10 @@ export function App() {
               </p>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {opportunities.map((opp) => (
+              {(opportunities || []).map((opp) => (
                 <div key={opp.id} style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
-                    <div style={{ fontSize: '11px', color: 'var(--accent-blue)', fontWeight: 600 }}>BRAND: {opp.brand_name} • STATUS: {opp.status.toUpperCase()}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--accent-blue)', fontWeight: 600 }}>BRAND: {opp.brand_name} • STATUS: {(opp.status || 'ACTIVE').toUpperCase()}</div>
                     <div style={{ fontSize: '15px', fontWeight: 700, marginTop: '2px' }}>{opp.title}</div>
                     <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>{opp.rationale}</div>
                   </div>
@@ -1324,13 +1324,13 @@ export function App() {
             {/* Crawl Jobs List */}
             <h3 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '12px' }}>Recent Crawl Jobs</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {crawlJobs.map((job) => (
+              {(crawlJobs || []).map((job) => (
                 <div key={job.id} style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                       <span style={{ fontSize: '14px', fontWeight: 700 }}>{job.label}</span>
                       <span style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '4px', backgroundColor: job.status === 'completed' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)', color: job.status === 'completed' ? 'var(--accent-green)' : 'var(--accent-amber)', fontWeight: 600 }}>
-                        {job.status.toUpperCase()}
+                        {(job.status || 'PENDING').toUpperCase()}
                       </span>
                       <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Profile: {job.profile}</span>
                     </div>
@@ -1433,7 +1433,7 @@ export function App() {
             {/* Findings Table */}
             <h3 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '12px' }}>Diagnostic Findings ({seoFindings.length})</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {seoFindings.map((f) => {
+              {(seoFindings || []).map((f) => {
                 const badgeColor =
                   f.severity === 'critical'
                     ? 'var(--accent-red)'
@@ -1447,7 +1447,7 @@ export function App() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', border: `1px solid ${badgeColor}`, color: badgeColor, fontWeight: 700 }}>
-                          {f.severity.toUpperCase()}
+                          {(f.severity || 'INFO').toUpperCase()}
                         </span>
                         <span style={{ fontSize: '14px', fontWeight: 700 }}>{f.title}</span>
                         <code style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{f.issue_code}</code>
@@ -1952,7 +1952,7 @@ export function App() {
                                     backgroundColor: node.proposal.status === 'approved' ? 'rgba(16, 185, 129, 0.2)' : node.proposal.status === 'rejected' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.2)',
                                     color: node.proposal.status === 'approved' ? '#34d399' : node.proposal.status === 'rejected' ? '#f87171' : '#fde68a',
                                   }}>
-                                    {node.proposal.status.toUpperCase()}
+                                    {(node.proposal.status || 'DRAFT').toUpperCase()}
                                   </span>
                                 )}
                               </div>
@@ -2564,7 +2564,7 @@ export function App() {
                       <h3 style={{ fontSize: '15px', fontWeight: 700 }}>Diagnostic Health Report</h3>
                       {metaValidationReport && (
                         <span style={{ fontSize: '12px', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, backgroundColor: metaValidationReport.overallScore >= 80 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)', color: metaValidationReport.overallScore >= 80 ? '#34d399' : '#f87171' }}>
-                          {metaValidationReport.overallScore}/100 ({metaValidationReport.status.toUpperCase()})
+                          {metaValidationReport.overallScore}/100 ({(metaValidationReport.status || 'OK').toUpperCase()})
                         </span>
                       )}
                     </div>
@@ -2591,10 +2591,10 @@ export function App() {
 
                       {/* Findings List */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
-                        {metaValidationReport.findings.map((f: any, idx: number) => (
+                        {(metaValidationReport.findings || []).map((f: any, idx: number) => (
                           <div key={idx} style={{ padding: '6px 10px', backgroundColor: 'var(--bg-secondary)', borderRadius: '4px', fontSize: '11px', display: 'flex', gap: '8px', alignItems: 'center' }}>
                             <span style={{ fontWeight: 700, color: f.severity === 'error' ? '#f87171' : f.severity === 'warning' ? '#fde68a' : '#93c5fd' }}>
-                              [{f.severity.toUpperCase()}]
+                              [{(f.severity || 'INFO').toUpperCase()}]
                             </span>
                             <span style={{ flex: 1 }}>{f.message}</span>
                             <code style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{f.ruleId}</code>
@@ -2859,16 +2859,16 @@ export function App() {
               </div>
 
               {/* Proposals Table */}
-              {metaProposals.length > 0 ? (
+              {(metaProposals || []).length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {metaProposals.map((p) => {
+                  {(metaProposals || []).map((p) => {
                     const statusColor = p.status === 'approved' ? '#34d399' : p.status === 'rejected' ? '#f87171' : '#fde68a';
                     return (
                       <div key={p.id} style={{ padding: '12px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                             <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', fontWeight: 700, backgroundColor: 'rgba(255,255,255,0.08)', color: statusColor, border: `1px solid ${statusColor}` }}>
-                              {p.status.toUpperCase()}
+                              {(p.status || 'DRAFT').toUpperCase()}
                             </span>
                             <span style={{ fontWeight: 700 }}>{p.payload?.title || p.url}</span>
                             <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>({p.url})</span>
@@ -3195,7 +3195,7 @@ export function App() {
             )}
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
-              {connectors.map((c) => {
+              {(connectors || []).map((c) => {
                 const isConnected = c.status === 'connected';
                 return (
                   <div
@@ -3230,7 +3230,7 @@ export function App() {
                       <div style={{ fontSize: '12px', color: 'var(--accent-blue)', marginTop: '4px' }}>Category: {c.category}</div>
                       <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '8px' }}>{c.notes}</div>
                       <div style={{ marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                        {c.caps.map((cap) => (
+                        {(c.caps || []).map((cap) => (
                           <span key={cap} style={{ fontSize: '10px', padding: '2px 6px', backgroundColor: 'var(--bg-secondary)', borderRadius: '4px', color: 'var(--text-secondary)' }}>
                             {cap}
                           </span>
@@ -3336,9 +3336,9 @@ export function App() {
             </div>
 
             {/* Registered Source Evidence */}
-            <h3 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '12px' }}>Registered Source Evidence ({evidenceList.length})</h3>
+            <h3 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '12px' }}>Registered Source Evidence ({(evidenceList || []).length})</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {evidenceList.map((ev) => (
+              {(evidenceList || []).map((ev) => (
                 <div key={ev.id} style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: '14px' }}>{ev.title || ev.url}</div>
