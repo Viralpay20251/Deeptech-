@@ -328,7 +328,7 @@ export function App() {
     try {
       const res = await authFetch('/api/v1/brands');
       const data = await res.json();
-      if (data.success && data.data.length > 0) {
+      if (data.success && Array.isArray(data.data) && data.data.length > 0) {
         setBrands(data.data);
         setSelectedBrandId(data.data[0].id);
       }
@@ -342,7 +342,7 @@ export function App() {
     try {
       const res = await authFetch('/api/v1/demand/opportunities');
       const data = await res.json();
-      if (data.success) setOpportunities(data.data);
+      if (data.success && Array.isArray(data.data)) setOpportunities(data.data);
     } catch {
       setOpportunities([]);
     }
@@ -352,7 +352,7 @@ export function App() {
     try {
       const res = await authFetch('/api/v1/approvals');
       const data = await res.json();
-      if (data.success) setApprovals(data.data);
+      if (data.success && Array.isArray(data.data)) setApprovals(data.data);
     } catch {
       setApprovals([]);
     }
@@ -362,14 +362,14 @@ export function App() {
     try {
       const res = await authFetch('/api/v1/connectors/instances');
       const data = await res.json();
-      if (data.success && data.data && data.data.length > 0) {
+      if (data.success && Array.isArray(data.data) && data.data.length > 0) {
         const mapped: ConnectorItem[] = data.data.map((row: any) => ({
           id: row.id,
           name: row.display_name || row.connector_type,
           connector_type: row.connector_type,
           category: row.category || 'Platform Integration',
           status: row.status,
-          caps: row.granted_capabilities || [],
+          caps: Array.isArray(row.granted_capabilities) ? row.granted_capabilities : [],
           notes: row.health_check_message || row.notes || '',
         }));
         setConnectors(mapped);
@@ -383,7 +383,7 @@ export function App() {
     try {
       const res = await authFetch('/api/v1/crawler/jobs');
       const data = await res.json();
-      if (data.success) setCrawlJobs(data.data);
+      if (data.success && Array.isArray(data.data)) setCrawlJobs(data.data);
     } catch {
       // fallback
     }
@@ -397,8 +397,8 @@ export function App() {
       ]);
       const findingsData = await findingsRes.json();
       const summaryData = await summaryRes.json();
-      if (findingsData.success) setSeoFindings(findingsData.data);
-      if (summaryData.success) setSeoSummary(summaryData.data.breakdown);
+      if (findingsData.success && Array.isArray(findingsData.data)) setSeoFindings(findingsData.data);
+      if (summaryData.success && summaryData.data?.breakdown) setSeoSummary(summaryData.data.breakdown);
     } catch {
       // fallback
     }
@@ -408,7 +408,7 @@ export function App() {
     try {
       const res = await authFetch('/api/v1/evidence');
       const data = await res.json();
-      if (data.success) setEvidenceList(data.data);
+      if (data.success && Array.isArray(data.data)) setEvidenceList(data.data);
     } catch {
       // fallback
     }
