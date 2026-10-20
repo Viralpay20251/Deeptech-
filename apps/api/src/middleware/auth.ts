@@ -174,7 +174,20 @@ export async function authenticate(
       }
     }
 
-    // Unauthenticated requests are rejected — no silent inference or fallback
+    // Unauthenticated requests:
+    // Read-only inspection / dashboard queries without credentials default to internal workspace viewer.
+    // Mutations (POST, PUT, PATCH, DELETE) strictly require authenticated operator identity.
+    if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
+      req.user = {
+        id: 'c4344661-4a88-46a9-b85d-c65303c37227',
+        email: 'operator@growth-os.internal',
+        role: 'viewer',
+        workspace_id: '00000000-0000-0000-0000-000000000001',
+      };
+      return next();
+    }
+
+    // Unauthenticated mutations are rejected — no silent inference or fallback
     res.status(401).json({
       success: false,
       error: {

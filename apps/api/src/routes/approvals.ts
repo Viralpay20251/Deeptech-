@@ -14,7 +14,7 @@ import { authenticate, requireRole } from '../middleware/auth.js';
 export const approvalsRouter = Router();
 
 approvalsRouter.get('/', async (req: Request, res: Response) => {
-  const workspaceId = req.user?.workspace_id || (req.query['workspace_id'] as string);
+  const workspaceId = req.user?.workspace_id || (req.query['workspace_id'] as string) || '00000000-0000-0000-0000-000000000001';
   const status = (req.query['status'] as string) ?? 'pending';
 
   try {

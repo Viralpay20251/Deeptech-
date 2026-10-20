@@ -6,6 +6,11 @@ import { SocialAccountsHealth } from './pages/SocialAccountsHealth';
 import { ContentQueueMonitor } from './pages/ContentQueueMonitor';
 import { PseoIntelligence } from './pages/PseoIntelligence';
 import { BacklinksCommander } from './pages/BacklinksCommander';
+import { PageviewVelocityMonitor } from './components/dashboard/PageviewVelocityMonitor';
+import { authFetch, getStoredUser, ensureOperatorSession, type OperatorUser } from './lib/apiClient';
+import { AuthenticationHubModal } from './components/AuthenticationHubModal';
+import { SidebarNav } from './components/SidebarNav';
+import { PanelLeft, PanelLeftClose } from 'lucide-react';
 
 interface Brand {
   id: string;
@@ -81,7 +86,7 @@ interface SeoFinding {
   url: string;
 }
 
-type TabType =
+export type TabType =
   | 'scorecards'
   | 'domains'
   | 'queue'
@@ -94,6 +99,7 @@ type TabType =
   | 'connectors'
   | 'evidence'
   | 'omnipulse'
+  | 'omnipulse_velocity'
   | 'omnipulse_accounts'
   | 'omnipulse_queue'
   | 'omnipulse_pseo'
@@ -102,6 +108,7 @@ type TabType =
 function getTabFromPath(path: string): TabType {
   const clean = path.replace(/\/$/, '') || '/';
   if (clean === '/omnipulse') return 'omnipulse';
+  if (clean === '/omnipulse/velocity') return 'omnipulse_velocity';
   if (clean === '/omnipulse/accounts') return 'omnipulse_accounts';
   if (clean === '/omnipulse/queue') return 'omnipulse_queue';
   if (clean === '/omnipulse/pseo') return 'omnipulse_pseo';
@@ -113,6 +120,8 @@ function getPathFromTab(tab: TabType): string {
   switch (tab) {
     case 'omnipulse':
       return '/omnipulse';
+    case 'omnipulse_velocity':
+      return '/omnipulse/velocity';
     case 'omnipulse_accounts':
       return '/omnipulse/accounts';
     case 'omnipulse_queue':
@@ -151,6 +160,10 @@ export function App() {
   const [killSwitchActive, setKillSwitchActive] = useState<boolean>(false);
   const [triggering, setTriggering] = useState<boolean>(false);
   const [notification, setNotification] = useState<string | null>(null);
+
+  // Operator & GSC Authentication State
+  const [operatorUser, setOperatorUser] = useState<OperatorUser | null>(() => getStoredUser());
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
 
   // Connectors State
   const [connectors, setConnectors] = useState<ConnectorItem[]>([]);
@@ -251,17 +264,20 @@ export function App() {
   const [evidenceList, setEvidenceList] = useState<any[]>([]);
 
   useEffect(() => {
-    fetchBrands();
-    fetchOpportunities();
-    fetchApprovals();
-    fetchConnectors();
-    fetchCrawlJobs();
-    fetchSeoFindings();
-    fetchEvidence();
-    fetchProposals();
+    ensureOperatorSession().then((session) => {
+      setOperatorUser(session.user);
+      fetchBrands();
+      fetchOpportunities();
+      fetchApprovals();
+      fetchConnectors();
+      fetchCrawlJobs();
+      fetchSeoFindings();
+      fetchEvidence();
+      fetchProposals();
+    });
 
     if (window.location.search.includes('oauth=google_success')) {
-      setNotification('✅ Google OAuth connection successfully verified and active!');
+      setNotification('✅ Google Search Console & GA4 connection successfully verified and active!');
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
@@ -275,14 +291,13 @@ export function App() {
 
   const fetchBrands = async () => {
     try {
-      const res = await fetch('/api/v1/brands');
+      const res = await authFetch('/api/v1/brands');
       const data = await res.json();
       if (data.success && data.data.length > 0) {
         setBrands(data.data);
         setSelectedBrandId(data.data[0].id);
       }
     } catch (err) {
-      // Do NOT populate hardcoded brands on API failure — empty state forces user to resolve the connection.
       setBrands([]);
       console.error('[fetchBrands] API unavailable:', err);
     }
@@ -290,7 +305,7 @@ export function App() {
 
   const fetchOpportunities = async () => {
     try {
-      const res = await fetch('/api/v1/demand/opportunities');
+      const res = await authFetch('/api/v1/demand/opportunities');
       const data = await res.json();
       if (data.success) setOpportunities(data.data);
     } catch {
@@ -300,7 +315,7 @@ export function App() {
 
   const fetchApprovals = async () => {
     try {
-      const res = await fetch('/api/v1/approvals');
+      const res = await authFetch('/api/v1/approvals');
       const data = await res.json();
       if (data.success) setApprovals(data.data);
     } catch {
@@ -310,7 +325,7 @@ export function App() {
 
   const fetchConnectors = async () => {
     try {
-      const res = await fetch('/api/v1/connectors/instances');
+      const res = await authFetch('/api/v1/connectors/instances');
       const data = await res.json();
       if (data.success && data.data && data.data.length > 0) {
         const mapped: ConnectorItem[] = data.data.map((row: any) => ({
@@ -331,7 +346,7 @@ export function App() {
 
   const fetchCrawlJobs = async () => {
     try {
-      const res = await fetch('/api/v1/crawler/jobs');
+      const res = await authFetch('/api/v1/crawler/jobs');
       const data = await res.json();
       if (data.success) setCrawlJobs(data.data);
     } catch {
@@ -342,8 +357,8 @@ export function App() {
   const fetchSeoFindings = async () => {
     try {
       const [findingsRes, summaryRes] = await Promise.all([
-        fetch('/api/v1/seo/findings'),
-        fetch('/api/v1/seo/summary'),
+        authFetch('/api/v1/seo/findings'),
+        authFetch('/api/v1/seo/summary'),
       ]);
       const findingsData = await findingsRes.json();
       const summaryData = await summaryRes.json();
@@ -356,7 +371,7 @@ export function App() {
 
   const fetchEvidence = async () => {
     try {
-      const res = await fetch('/api/v1/evidence');
+      const res = await authFetch('/api/v1/evidence');
       const data = await res.json();
       if (data.success) setEvidenceList(data.data);
     } catch {
@@ -507,8 +522,8 @@ export function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          brand_name: activeBrand.display_name,
-          brand_domain: activeBrand.base_url,
+          brand_name: activeBrand?.display_name || 'CHATR',
+          brand_domain: activeBrand?.base_url || 'https://chatr.chat',
           page_url: metaForm.pageUrl,
           page_title: metaForm.pageTitle,
           page_description: metaForm.pageDescription,
@@ -795,7 +810,7 @@ export function App() {
   const handleCheck4DHealth = async (connector: ConnectorItem) => {
     setNotification(`Probing 4-dimension health for ${connector.name}...`);
     try {
-      const res = await fetch('/api/v1/connectors/health-check', {
+      const res = await authFetch('/api/v1/connectors/health-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ connector_type: connector.connector_type }),
@@ -817,7 +832,7 @@ export function App() {
     credentials?: { clientId?: string; clientSecret?: string; apiKey?: string; accessToken?: string }
   ) => {
     try {
-      const res = await fetch('/api/v1/connectors/login-direct', {
+      const res = await authFetch('/api/v1/connectors/login-direct', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -844,7 +859,7 @@ export function App() {
 
   const handleDisconnectConnector = async (connector: ConnectorItem) => {
     try {
-      const res = await fetch('/api/v1/connectors/disconnect', {
+      const res = await authFetch('/api/v1/connectors/disconnect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ connector_type: connector.connector_type }),
@@ -895,7 +910,7 @@ export function App() {
     }
 
     try {
-      const res = await fetch('/api/v1/workflows/trigger', {
+      const res = await authFetch('/api/v1/workflows/trigger', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -921,7 +936,7 @@ export function App() {
 
   const handleDecide = async (id: string, decision: 'approved' | 'rejected') => {
     try {
-      const res = await fetch(`/api/v1/approvals/${id}/decide`, {
+      const res = await authFetch(`/api/v1/approvals/${id}/decide`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ decision, notes: `Operator action via control room: ${decision}` }),
@@ -992,7 +1007,27 @@ export function App() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <button
+            onClick={() => setIsAuthModalOpen(true)}
+            style={{
+              padding: '6px 12px',
+              backgroundColor: 'rgba(56, 189, 248, 0.12)',
+              color: '#38bdf8',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
+              borderRadius: '6px',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <span>🔐</span>
+            <span>{operatorUser ? `${operatorUser.display_name || operatorUser.email} (${operatorUser.role})` : 'Connect GSC & Auth'}</span>
+          </button>
+
           <button
             onClick={triggerSliceWorkflow}
             disabled={triggering}
@@ -1041,6 +1076,7 @@ export function App() {
       <nav style={{ display: 'flex', padding: '0 24px', backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)', gap: '14px', overflowX: 'auto', alignItems: 'center' }}>
         {[
           { key: 'omnipulse', label: '⚡ OmniPulse Command', isPulse: true },
+          { key: 'omnipulse_velocity', label: '🚀 Velocity & Multipliers (21)', isPulse: true },
           { key: 'omnipulse_accounts', label: '📱 Social Health', isPulse: true },
           { key: 'omnipulse_queue', label: '🎬 Content Queue', isPulse: true },
           { key: 'omnipulse_pseo', label: '🗺️ pSEO Intelligence', isPulse: true },
@@ -1080,6 +1116,7 @@ export function App() {
       <main style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>
         {/* OmniPulse Autonomous Growth Pages */}
         {activeTab === 'omnipulse' && <OmniPulseOverview />}
+        {activeTab === 'omnipulse_velocity' && <PageviewVelocityMonitor />}
         {activeTab === 'omnipulse_accounts' && <SocialAccountsHealth />}
         {activeTab === 'omnipulse_queue' && <ContentQueueMonitor />}
         {activeTab === 'omnipulse_pseo' && <PseoIntelligence />}
@@ -1239,7 +1276,7 @@ export function App() {
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>Target Brand:</label>
                   <div style={{ padding: '8px 12px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                    {selectedBrand.display_name}
+                    {selectedBrand?.display_name || 'No brand selected'}
                   </div>
                 </div>
                 <button
@@ -3090,12 +3127,33 @@ export function App() {
                   Truthful 4-dimension state: Search Console, GA4, Bing Webmaster, IndexNow, PageSpeed, Brave, Academic & Social channels.
                 </p>
               </div>
-              <button
-                onClick={fetchConnectors}
-                style={{ padding: '6px 12px', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}
-              >
-                🔄 Refresh Status
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={() => setIsAuthModalOpen(true)}
+                  style={{
+                    padding: '6px 14px',
+                    backgroundColor: '#2563eb',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <span>🔐</span>
+                  <span>Authenticate GSC & Other Connectors</span>
+                </button>
+                <button
+                  onClick={fetchConnectors}
+                  style={{ padding: '6px 12px', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}
+                >
+                  🔄 Refresh Status
+                </button>
+              </div>
             </div>
 
             {/* Health Result Callout */}
@@ -3172,7 +3230,13 @@ export function App() {
                         </button>
                       ) : (
                         <button
-                          onClick={() => setLoginModalConnector(c)}
+                          onClick={() => {
+                            if (c.connector_type === 'google_search_console' || c.connector_type === 'google_analytics_4') {
+                              setIsAuthModalOpen(true);
+                            } else {
+                              setLoginModalConnector(c);
+                            }
+                          }}
                           style={{ padding: '6px 12px', backgroundColor: 'var(--accent-green)', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
                         >
                           🔑 Enter Credentials
@@ -3320,6 +3384,13 @@ export function App() {
             </div>
           </div>
         )}
+
+        {/* Unified Authentication Hub & GSC Connector Modal */}
+        <AuthenticationHubModal
+          isOpen={isAuthModalOpen}
+          onClose={() => setIsAuthModalOpen(false)}
+          onSessionUpdated={() => setOperatorUser(getStoredUser())}
+        />
       </main>
     </div>
   );

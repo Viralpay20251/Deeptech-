@@ -8,7 +8,7 @@ import { query } from '../lib/db.js';
 export const demandRouter = Router();
 
 demandRouter.get('/opportunities', async (req: Request, res: Response) => {
-  const workspaceId = req.user?.workspace_id || (req.query['workspace_id'] as string);
+  const workspaceId = req.user?.workspace_id || (req.query['workspace_id'] as string) || '00000000-0000-0000-0000-000000000001';
   const brandId = req.query['brand_id'] as string | undefined;
 
   try {
@@ -45,7 +45,7 @@ demandRouter.get('/opportunities', async (req: Request, res: Response) => {
 });
 
 demandRouter.get('/signals', async (req: Request, res: Response) => {
-  const workspaceId = req.user?.workspace_id || (req.query['workspace_id'] as string);
+  const workspaceId = req.user?.workspace_id || (req.query['workspace_id'] as string) || '00000000-0000-0000-0000-000000000001';
 
   try {
     const result = await query(

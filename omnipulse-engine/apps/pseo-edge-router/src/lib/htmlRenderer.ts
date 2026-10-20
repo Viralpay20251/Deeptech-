@@ -1,4 +1,6 @@
 import type { DomainConfig, BrandCluster } from '../config/domains.js';
+import { renderInteractiveMultiplierHtml } from '../components/InteractiveMultipliers/SessionMultiplierFlow.js';
+import { getOgDataUri, DISCOVER_ROBOTS_META } from '../../../../services/discover-igniter/src/discoverEngine.js';
 
 export interface LeafPageRenderParams {
   title: string;
@@ -11,6 +13,7 @@ export interface LeafPageRenderParams {
   jsonLd: Record<string, unknown> | Array<Record<string, unknown>>;
   botWaveUrls?: string[];
   cacheControlHint?: string;
+  ogImageUrl?: string;
 }
 
 export interface HubPageRenderParams {
@@ -121,12 +124,22 @@ export function renderLeafPage(params: LeafPageRenderParams): string {
     jsonLd,
     botWaveUrls = [],
     cacheControlHint = 'public, s-maxage=2592000, stale-while-revalidate=86400',
+    ogImageUrl,
   } = params;
 
   const brand = domainConfig.brand;
   const theme = getBrandColor(brand);
   const hreflangTags = renderHreflangTags(canonicalUrl, brand);
   const dimEntries = Object.entries(dimensionValues);
+
+  const effectiveOgImage = ogImageUrl || getOgDataUri({
+    title,
+    subtitle: metaDescription,
+    category: domainConfig.dimensions[0] || 'ANALYSIS',
+    brandCluster: brand,
+    metricValue: 'VERIFIED',
+    metricLabel: 'INDEXED',
+  });
 
   // Formulate rich contextual content based on dimensions
   const dimSummaries = dimEntries.map(([k, v]) => `<strong>${escapeHtml(k)}:</strong> ${escapeHtml(v.display_value)}`).join(' &bull; ');
@@ -142,6 +155,13 @@ export function renderLeafPage(params: LeafPageRenderParams): string {
     ? botWaveUrls.slice(0, 3).map((url) => `<link rel="next" href="${escapeHtml(url)}" />`).join('\n')
     : '';
 
+  const interactiveMultiplierWidget = renderInteractiveMultiplierHtml(
+    domainConfig.hostname,
+    brand,
+    dimensionValues['role']?.display_value || dimensionValues['product']?.display_value || dimensionValues['intent']?.display_value || title,
+    dimensionValues['city']?.display_value || dimensionValues['region']?.display_value || 'bengaluru'
+  );
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -151,19 +171,23 @@ export function renderLeafPage(params: LeafPageRenderParams): string {
   <title>${escapeHtml(title)} | ${escapeHtml(theme.brandName)}</title>
   <meta name="description" content="${escapeHtml(metaDescription)}" />
   <link rel="canonical" href="${escapeHtml(canonicalUrl)}" />
-  <meta name="robots" content="index, follow, max-image-preview:large" />
+  <meta name="robots" content="${DISCOVER_ROBOTS_META}" />
   
-  <!-- OpenGraph -->
+  <!-- OpenGraph with 1200x675 Discover Card -->
   <meta property="og:type" content="article" />
   <meta property="og:title" content="${escapeHtml(title)}" />
   <meta property="og:description" content="${escapeHtml(metaDescription)}" />
   <meta property="og:url" content="${escapeHtml(canonicalUrl)}" />
   <meta property="og:site_name" content="${escapeHtml(theme.brandName)}" />
+  <meta property="og:image" content="${escapeHtml(effectiveOgImage)}" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="675" />
   
-  <!-- Twitter -->
+  <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${escapeHtml(title)}" />
   <meta name="twitter:description" content="${escapeHtml(metaDescription)}" />
+  <meta name="twitter:image" content="${escapeHtml(effectiveOgImage)}" />
   
   ${hreflangTags}
   ${preloadBotHints}
@@ -195,6 +219,9 @@ ${getCommonCss(brand)}
     <article>
       <h1>${escapeHtml(title)}</h1>
       <p class="lead">${escapeHtml(metaDescription)}</p>
+
+      <!-- 6x Session Depth Interactive Tool Engine -->
+      ${interactiveMultiplierWidget}
 
       <div style="margin-bottom: 1.5rem; font-size: 0.95rem; color: #475569;">
         ${dimSummaries}
@@ -356,7 +383,7 @@ export function renderHubPage(params: HubPageRenderParams): string {
   <title>${escapeHtml(title)} | ${escapeHtml(theme.brandName)} Directory</title>
   <meta name="description" content="${escapeHtml(metaDescription)}" />
   <link rel="canonical" href="${escapeHtml(canonicalUrl)}" />
-  <meta name="robots" content="index, follow" />
+  <meta name="robots" content="${DISCOVER_ROBOTS_META}" />
   
   <meta property="og:title" content="${escapeHtml(title)}" />
   <meta property="og:description" content="${escapeHtml(metaDescription)}" />

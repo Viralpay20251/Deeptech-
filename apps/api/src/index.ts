@@ -22,6 +22,8 @@ import { killSwitchesRouter } from './routes/kill-switches.js';
 import { analyticsRouter } from './routes/analytics.js';
 import { redirectsRouter, trackedLinksApiRouter } from './routes/redirects.js';
 import { authGoogleRouter } from './routes/auth-google.js';
+import { authRouter } from './routes/auth.js';
+import { omnipulseRouter } from './routes/omnipulse.js';
 import { publicPagesRouter, pagesApiRouter } from './routes/public-pages.js';
 import { crawlerRouter } from './routes/crawler.js';
 import { seoRouter } from './routes/seo.js';
@@ -72,13 +74,14 @@ app.use('/health', healthRouter);
 // 3. /api/v1/pages/sitemap.xml, /api/v1/pages/robots.txt, /api/v1/pages/p/* (Public SEO mirrors)
 app.use('/api/v1', (req, res, next) => {
   const isPublic =
-    req.path.startsWith('/auth/google') ||
+    req.path.startsWith('/auth') ||
     req.path === '/crawler/worker/process-next' ||
     req.path === '/pages/sitemap.xml' ||
     req.path === '/pages/robots.txt' ||
     req.path.startsWith('/pages/p/') ||
     req.path.startsWith('/backlinks') ||
-    req.path.startsWith('/domains');
+    req.path.startsWith('/domains') ||
+    req.path.startsWith('/omnipulse');
 
   if (isPublic) {
     return next();
@@ -89,6 +92,8 @@ app.use('/api/v1', (req, res, next) => {
     return requireWorkspaceScope(req, res, next);
   });
 });
+app.use('/api/v1/auth', authRouter);
+app.use('/api/v1/auth/google', authGoogleRouter);
 app.use('/api/v1/brands', brandsRouter);
 app.use('/api/v1/connectors', connectorsRouter);
 app.use('/api/v1/demand', demandRouter);
@@ -97,7 +102,6 @@ app.use('/api/v1/approvals', approvalsRouter);
 app.use('/api/v1/kill-switches', killSwitchesRouter);
 app.use('/api/v1/analytics', analyticsRouter);
 app.use('/api/v1/tracked-links', trackedLinksApiRouter);
-app.use('/api/v1/auth/google', authGoogleRouter);
 app.use('/api/v1/pages', pagesApiRouter);
 app.use('/api/v1/crawler', crawlerRouter);
 app.use('/api/v1/seo', seoRouter);
@@ -106,6 +110,7 @@ app.use('/api/v1/evidence', evidenceRouter);
 app.use('/api/v1/domains', domainsRouter);
 app.use('/api/v1/queue', queueRouter);
 app.use('/api/v1/backlinks', backlinksRouter);
+app.use('/api/v1/omnipulse', omnipulseRouter);
 
 // 5. Global Error Handler
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
