@@ -114,6 +114,17 @@ function getTabFromPath(path: string): TabType {
   if (clean === '/omnipulse/queue') return 'omnipulse_queue';
   if (clean === '/omnipulse/pseo') return 'omnipulse_pseo';
   if (clean === '/omnipulse/backlinks') return 'omnipulse_backlinks';
+  if (clean === '/domains') return 'domains';
+  if (clean === '/scorecards') return 'scorecards';
+  if (clean === '/queue') return 'queue';
+  if (clean === '/approvals') return 'approvals';
+  if (clean === '/opportunities') return 'opportunities';
+  if (clean === '/workflows') return 'workflows';
+  if (clean === '/crawler') return 'crawler';
+  if (clean === '/seo') return 'seo';
+  if (clean === '/meta-studio' || clean === '/meta_studio') return 'meta_studio';
+  if (clean === '/connectors') return 'connectors';
+  if (clean === '/evidence') return 'evidence';
   return 'scorecards';
 }
 
@@ -131,6 +142,28 @@ function getPathFromTab(tab: TabType): string {
       return '/omnipulse/pseo';
     case 'omnipulse_backlinks':
       return '/omnipulse/backlinks';
+    case 'domains':
+      return '/domains';
+    case 'scorecards':
+      return '/scorecards';
+    case 'queue':
+      return '/queue';
+    case 'approvals':
+      return '/approvals';
+    case 'opportunities':
+      return '/opportunities';
+    case 'workflows':
+      return '/workflows';
+    case 'crawler':
+      return '/crawler';
+    case 'seo':
+      return '/seo';
+    case 'meta_studio':
+      return '/meta-studio';
+    case 'connectors':
+      return '/connectors';
+    case 'evidence':
+      return '/evidence';
     default:
       return '/';
   }
