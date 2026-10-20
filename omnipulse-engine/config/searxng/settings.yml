@@ -1,0 +1,36 @@
+general:
+  debug: false
+  instance_name: "OmniPulse Search"
+
+search:
+  safe_search: 0
+  autocomplete: ''
+  default_lang: 'en-IN'
+
+engines:
+  - name: google
+    engine: google
+    use_mobile_ui: true
+    disabled: false
+  - name: bing
+    engine: bing
+    disabled: false
+  - name: duckduckgo
+    engine: duckduckgo
+    disabled: false
+  - name: reddit
+    engine: reddit
+    disabled: false
+  - name: youtube
+    engine: youtube_noapi
+    disabled: false
+
+server:
+  secret_key: "${SEARXNG_SECRET_KEY}"
+  bind_address: "0.0.0.0"
+  port: 8080
+
+outgoing:
+  request_timeout: 8.0
+  useragent_suffix: ''
+  max_request_timeout: 15.0

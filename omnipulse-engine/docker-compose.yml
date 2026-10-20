@@ -1,0 +1,151 @@
+version: '3.9'
+
+services:
+  # ── Search intelligence (zero-cost, self-hosted) ──────────────────────────
+  searxng:
+    image: searxng/searxng:latest
+    container_name: omnipulse_searxng
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config/searxng:/etc/searxng
+    environment:
+      - SEARXNG_BASE_URL=http://searxng:8080
+      - SEARXNG_SECRET_KEY=${SEARXNG_SECRET_KEY}
+    networks:
+      - omnipulse
+
+  # ── Local LLM inference (zero-cost) ─────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: omnipulse_ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - omnipulse
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # ── Job queue / cache (BullMQ-compatible) ────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: omnipulse_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    networks:
+      - omnipulse
+
+  # ── Trend brain service ───────────────────────────────────────────────────
+  trend-brain:
+    build: ./services/trend-brain
+    container_name: omnipulse_trend_brain
+    restart: unless-stopped
+    depends_on: [searxng, ollama, redis]
+    environment:
+      - SEARXNG_URL=http://searxng:8080
+      - OLLAMA_URL=http://ollama:11434
+      - REDIS_URL=redis://redis:6379
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - CRON_SCHEDULE=${TREND_BRAIN_CRON:-0 */2 * * *}
+    volumes:
+      - ./services/trend-brain:/app
+    networks:
+      - omnipulse
+
+  # ── Media factory service ─────────────────────────────────────────────────
+  media-factory:
+    build: ./services/media-factory
+    container_name: omnipulse_media_factory
+    restart: unless-stopped
+    depends_on: [ollama, redis]
+    environment:
+      - OLLAMA_URL=http://ollama:11434
+      - REDIS_URL=redis://redis:6379
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - MEDIA_OUTPUT_DIR=/media
+      - EDGE_TTS_VOICE=${EDGE_TTS_VOICE:-en-IN-NeerjaNeural}
+    volumes:
+      - ./services/media-factory:/app
+      - media_output:/media
+    networks:
+      - omnipulse
+
+  # ── Stealth distributor service ───────────────────────────────────────────
+  stealth-distributor:
+    build: ./services/stealth-distributor
+    container_name: omnipulse_stealth_distributor
+    restart: unless-stopped
+    depends_on: [redis]
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - MEDIA_DIR=/media
+      - PATCHRIGHT_HEADLESS=${PATCHRIGHT_HEADLESS:-true}
+    volumes:
+      - ./services/stealth-distributor:/app
+      - media_output:/media
+      - patchright_profiles:/profiles
+    networks:
+      - omnipulse
+    shm_size: '2gb'
+
+  # ── GSC indexer service ───────────────────────────────────────────────────
+  gsc-indexer:
+    build: ./services/gsc-indexer
+    container_name: omnipulse_gsc_indexer
+    restart: unless-stopped
+    depends_on: [redis]
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - GOOGLE_SERVICE_ACCOUNT_JSON=${GOOGLE_SERVICE_ACCOUNT_JSON}
+      - INDEXNOW_KEYS=${INDEXNOW_KEYS}
+      - DAILY_INDEXING_API_QUOTA=${DAILY_INDEXING_API_QUOTA:-200}
+    volumes:
+      - ./services/gsc-indexer:/app
+    networks:
+      - omnipulse
+
+  # ── pSEO Edge Router (SSR) ────────────────────────────────────────────────
+  pseo-edge-router:
+    build: ./apps/pseo-edge-router
+    container_name: omnipulse_pseo_router
+    restart: unless-stopped
+    depends_on: [redis]
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - REDIS_URL=redis://redis:6379
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - INTERNAL_API_SECRET=${INTERNAL_WORKSPACE_SECRET}
+    networks:
+      - omnipulse
+
+networks:
+  omnipulse:
+    driver: bridge
+
+volumes:
+  ollama_models:
+  redis_data:
+  media_output:
+  patchright_profiles:

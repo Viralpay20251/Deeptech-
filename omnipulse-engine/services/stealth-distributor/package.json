@@ -1,0 +1,23 @@
+{
+  "name": "@omnipulse/stealth-distributor",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "patchright": "^1.48.0",
+    "@supabase/supabase-js": "^2.0.0",
+    "ioredis": "^5.0.0",
+    "zod": "^3.0.0",
+    "p-queue": "^8.0.0",
+    "dayjs": "^1.11.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
+  }
+}

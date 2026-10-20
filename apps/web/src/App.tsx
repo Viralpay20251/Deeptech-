@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
 import { DomainRegistryView } from './components/DomainRegistryView';
 import { DurableQueueView } from './components/DurableQueueView';
+import { OmniPulseOverview } from './pages/OmniPulseOverview';
+import { SocialAccountsHealth } from './pages/SocialAccountsHealth';
+import { ContentQueueMonitor } from './pages/ContentQueueMonitor';
+import { PseoIntelligence } from './pages/PseoIntelligence';
 
 interface Brand {
   id: string;
@@ -87,10 +91,54 @@ type TabType =
   | 'seo'
   | 'meta_studio'
   | 'connectors'
-  | 'evidence';
+  | 'evidence'
+  | 'omnipulse'
+  | 'omnipulse_accounts'
+  | 'omnipulse_queue'
+  | 'omnipulse_pseo';
+
+function getTabFromPath(path: string): TabType {
+  const clean = path.replace(/\/$/, '') || '/';
+  if (clean === '/omnipulse') return 'omnipulse';
+  if (clean === '/omnipulse/accounts') return 'omnipulse_accounts';
+  if (clean === '/omnipulse/queue') return 'omnipulse_queue';
+  if (clean === '/omnipulse/pseo') return 'omnipulse_pseo';
+  return 'scorecards';
+}
+
+function getPathFromTab(tab: TabType): string {
+  switch (tab) {
+    case 'omnipulse':
+      return '/omnipulse';
+    case 'omnipulse_accounts':
+      return '/omnipulse/accounts';
+    case 'omnipulse_queue':
+      return '/omnipulse/queue';
+    case 'omnipulse_pseo':
+      return '/omnipulse/pseo';
+    default:
+      return '/';
+  }
+}
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<TabType>('scorecards');
+  const [activeTab, setActiveTab] = useState<TabType>(() => getTabFromPath(window.location.pathname));
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setActiveTab(getTabFromPath(window.location.pathname));
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const handleTabSelect = (tabKey: TabType) => {
+    setActiveTab(tabKey);
+    const targetPath = getPathFromTab(tabKey);
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState({}, '', targetPath);
+    }
+  };
   const [brands, setBrands] = useState<Brand[]>([]);
   const [selectedBrandId, setSelectedBrandId] = useState<string>('');
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
@@ -984,9 +1032,13 @@ export function App() {
         </div>
       )}
 
-      {/* ─── Navigation Tabs (9 Functional Modules) ──────────────────────── */}
-      <nav style={{ display: 'flex', padding: '0 24px', backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)', gap: '16px', overflowX: 'auto' }}>
+      {/* ─── Navigation Tabs (OmniPulse Engine + Growth OS Modules) ──────── */}
+      <nav style={{ display: 'flex', padding: '0 24px', backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)', gap: '14px', overflowX: 'auto', alignItems: 'center' }}>
         {[
+          { key: 'omnipulse', label: '⚡ OmniPulse Command', isPulse: true },
+          { key: 'omnipulse_accounts', label: '📱 Social Health', isPulse: true },
+          { key: 'omnipulse_queue', label: '🎬 Content Queue', isPulse: true },
+          { key: 'omnipulse_pseo', label: '🗺️ pSEO Intelligence', isPulse: true },
           { key: 'scorecards', label: 'Scorecards' },
           { key: 'domains', label: '🌐 Domain Registry & Health (26)' },
           { key: 'queue', label: '⚙️ Queue & Workers' },
@@ -1000,15 +1052,15 @@ export function App() {
         ].map((t) => (
           <button
             key={t.key}
-            onClick={() => setActiveTab(t.key as TabType)}
+            onClick={() => handleTabSelect(t.key as TabType)}
             style={{
-              padding: '12px 4px',
+              padding: '12px 6px',
               background: 'none',
               border: 'none',
               borderBottom: activeTab === t.key ? '2px solid var(--accent-blue)' : '2px solid transparent',
-              color: activeTab === t.key ? 'var(--text-primary)' : 'var(--text-secondary)',
+              color: activeTab === t.key ? 'var(--text-primary)' : t.isPulse ? '#60a5fa' : 'var(--text-secondary)',
               fontSize: '13px',
-              fontWeight: 600,
+              fontWeight: activeTab === t.key || t.isPulse ? 600 : 500,
               cursor: 'pointer',
               whiteSpace: 'nowrap',
             }}
@@ -1020,6 +1072,12 @@ export function App() {
 
       {/* ─── Main Content Area ─────────────────────────────────────────── */}
       <main style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>
+        {/* OmniPulse Autonomous Growth Pages */}
+        {activeTab === 'omnipulse' && <OmniPulseOverview />}
+        {activeTab === 'omnipulse_accounts' && <SocialAccountsHealth />}
+        {activeTab === 'omnipulse_queue' && <ContentQueueMonitor />}
+        {activeTab === 'omnipulse_pseo' && <PseoIntelligence />}
+
         {/* TAB 1: Growth Scorecards */}
         {activeTab === 'scorecards' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
