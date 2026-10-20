@@ -134,10 +134,10 @@ export function ContentQueueMonitor() {
 
   const fetchQueue = async () => {
     try {
-      const res = await fetch('/api/v1/omnipulse/queue');
+      const res = await authFetch('/api/v1/omnipulse/queue');
       if (res.ok) {
         const json = await res.json();
-        if (json.success && json.data) {
+        if (json.success && Array.isArray(json.data)) {
           setItems(json.data);
         }
       }
@@ -158,7 +158,8 @@ export function ContentQueueMonitor() {
     { id: 'failed', title: 'Failed / Cooldown', color: 'var(--accent-red)' },
   ];
 
-  const filteredItems = items.filter((item) => {
+  const safeItems = Array.isArray(items) ? items : [];
+  const filteredItems = safeItems.filter((item) => {
     if (brandFilter !== 'all' && item.brandSlug !== brandFilter) return false;
     if (platformFilter !== 'all' && item.platform !== platformFilter) return false;
     return true;
