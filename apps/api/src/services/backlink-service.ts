@@ -84,7 +84,7 @@ export class BacklinkService {
     `;
 
     const res = await query(sql, params);
-    return res.rows;
+    return res.rows as unknown as BacklinkRecord[];
   }
 
   /**
@@ -120,31 +120,34 @@ export class BacklinkService {
       ORDER BY count DESC
     `);
 
-    const row = totalRes.rows[0] || {};
-    const total = row.total || 0;
-    const dofollow = row.dofollow_count || 0;
+    const row = (totalRes.rows[0] ?? {}) as Record<string, any>;
+    const total = Number(row['total'] ?? 0);
+    const dofollow = Number(row['dofollow_count'] ?? 0);
 
     const byBrandCluster: Record<string, number> = {};
-    for (const r of clusterRes.rows) {
-      byBrandCluster[r.brand_cluster] = r.count;
+    for (const r of clusterRes.rows as Array<Record<string, any>>) {
+      const cluster = String(r['brand_cluster'] ?? '');
+      if (cluster) byBrandCluster[cluster] = Number(r['count'] ?? 0);
     }
 
     const byStrategy: Record<string, number> = {};
-    for (const r of strategyRes.rows) {
-      byStrategy[r.backlink_strategy] = r.count;
+    for (const r of strategyRes.rows as Array<Record<string, any>>) {
+      const strat = String(r['backlink_strategy'] ?? '');
+      if (strat) byStrategy[strat] = Number(r['count'] ?? 0);
     }
 
     const byCanonicalHost: Record<string, number> = {};
-    for (const r of hostRes.rows) {
-      byCanonicalHost[r.target_canonical_domain] = r.count;
+    for (const r of hostRes.rows as Array<Record<string, any>>) {
+      const host = String(r['target_canonical_domain'] ?? '');
+      if (host) byCanonicalHost[host] = Number(r['count'] ?? 0);
     }
 
     return {
       totalBacklinks: total,
-      averageDomainAuthority: row.avg_da || 0,
+      averageDomainAuthority: Number(row['avg_da'] ?? 0),
       dofollowCount: dofollow,
       dofollowRatioPercent: total > 0 ? Math.round((dofollow / total) * 100) : 0,
-      uniqueReferringDomains: row.unique_domains || 0,
+      uniqueReferringDomains: Number(row['unique_domains'] ?? 0),
       byBrandCluster,
       byStrategy,
       byCanonicalHost,
@@ -190,11 +193,11 @@ export class BacklinkService {
    */
   public static async verifyBacklink(id: string): Promise<BacklinkRecord> {
     const existing = await query(`SELECT * FROM public.backlinks_registry WHERE id = $1`, [id]);
-    if (existing.rows.length === 0) {
+    if (existing.rows.length === 0 || !existing.rows[0]) {
       throw new Error(`Backlink record with ID ${id} not found.`);
     }
 
-    const bl = existing.rows[0];
+    const bl = existing.rows[0] as unknown as BacklinkRecord;
 
     try {
       const controller = new AbortController();
@@ -228,7 +231,9 @@ export class BacklinkService {
         [statusCode, status, id]
       );
 
-      return updateRes.rows[0];
+      const updated = updateRes.rows[0] as unknown as BacklinkRecord;
+      if (!updated) throw new Error('Failed to update backlink record');
+      return updated;
     } catch {
       // In case of timeout or rate limit, record status code 0 and retain active status
       const updateRes = await query(
@@ -243,7 +248,9 @@ export class BacklinkService {
       `,
         [id]
       );
-      return updateRes.rows[0];
+      const fallback = updateRes.rows[0] as unknown as BacklinkRecord;
+      if (!fallback) throw new Error('Failed to update backlink fallback record');
+      return fallback;
     }
   }
 }

@@ -27,7 +27,7 @@ backlinksRouter.get('/metrics', async (_req: Request, res: Response) => {
 // ─── GET /api/v1/backlinks/mesh ─────────────────────────────────────────────
 backlinksRouter.get('/mesh', async (req: Request, res: Response) => {
   try {
-    const sourceHost = req.query.source_host as string | undefined;
+    const sourceHost = req.query['source_host'] as string | undefined;
     const mesh = await BacklinkService.getInternalLinkMesh(sourceHost);
     res.json({ success: true, count: mesh.length, data: mesh });
   } catch (err) {
@@ -38,7 +38,7 @@ backlinksRouter.get('/mesh', async (req: Request, res: Response) => {
 // ─── GET /api/v1/backlinks/targets ──────────────────────────────────────────
 backlinksRouter.get('/targets', async (req: Request, res: Response) => {
   try {
-    const brandCluster = req.query.brand_cluster as string | undefined;
+    const brandCluster = req.query['brand_cluster'] as string | undefined;
     const targets = await BacklinkService.getSyndicationTargets(brandCluster);
     res.json({ success: true, count: targets.length, data: targets });
   } catch (err) {
@@ -49,14 +49,20 @@ backlinksRouter.get('/targets', async (req: Request, res: Response) => {
 // ─── GET /api/v1/backlinks ──────────────────────────────────────────────────
 backlinksRouter.get('/', async (req: Request, res: Response) => {
   try {
-    const { brand_cluster, target_canonical_domain, link_type, verification_status, limit, offset } = req.query;
+    const brandCluster = req.query['brand_cluster'] as string | undefined;
+    const targetCanonicalDomain = req.query['target_canonical_domain'] as string | undefined;
+    const linkType = req.query['link_type'] as string | undefined;
+    const verificationStatus = req.query['verification_status'] as string | undefined;
+    const limitParam = req.query['limit'] as string | undefined;
+    const offsetParam = req.query['offset'] as string | undefined;
+
     const records = await BacklinkService.listBacklinks({
-      brand_cluster: brand_cluster as string,
-      target_canonical_domain: target_canonical_domain as string,
-      link_type: link_type as string,
-      verification_status: verification_status as string,
-      limit: limit ? parseInt(limit as string, 10) : 100,
-      offset: offset ? parseInt(offset as string, 10) : 0,
+      brand_cluster: brandCluster,
+      target_canonical_domain: targetCanonicalDomain,
+      link_type: linkType,
+      verification_status: verificationStatus,
+      limit: limitParam ? parseInt(limitParam, 10) : 100,
+      offset: offsetParam ? parseInt(offsetParam, 10) : 0,
     });
 
     res.json({ success: true, count: records.length, data: records });
@@ -68,7 +74,12 @@ backlinksRouter.get('/', async (req: Request, res: Response) => {
 // ─── POST /api/v1/backlinks/:id/verify ──────────────────────────────────────
 backlinksRouter.post('/:id/verify', async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const rawId = req.params['id'];
+    const id = Array.isArray(rawId) ? rawId[0] : rawId;
+    if (!id || typeof id !== 'string') {
+      res.status(400).json({ success: false, error: 'Missing or invalid backlink id' });
+      return;
+    }
     const verified = await BacklinkService.verifyBacklink(id);
     res.json({ success: true, data: verified });
   } catch (err) {
