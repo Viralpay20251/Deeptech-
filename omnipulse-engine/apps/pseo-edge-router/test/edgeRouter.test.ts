@@ -235,6 +235,17 @@ async function runHttpTests() {
   const textHub = await resHub.text();
   assert.ok(textHub.includes('TalentXcel Directory &amp; Resource Center'));
 
+  // Dynamic 1200x675 OG PNG Endpoint
+  const resOg = await app.request('/og/software-engineer-in-bengaluru.png', {
+    headers: { host: 'salary.talentxcel.in' },
+  });
+  assert.strictEqual(resOg.status, 200);
+  assert.strictEqual(resOg.headers.get('content-type'), 'image/png');
+  assert.strictEqual(resOg.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+  const ogArrayBuffer = await resOg.arrayBuffer();
+  assert.ok(ogArrayBuffer.byteLength > 1000, 'Rendered PNG must be over 1000 bytes');
+  console.log(`✅ Dynamic 1200x675 OG PNG rasterizer verified (${ogArrayBuffer.byteLength} bytes).`);
+
   // 404 Fallback for unknown path
   const res404 = await app.request('/non-existent-random-page-12345', {
     headers: { host: 'unknown-domain.com' },

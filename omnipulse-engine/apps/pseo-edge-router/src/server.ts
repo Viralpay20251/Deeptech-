@@ -5,6 +5,7 @@ import { botWaveMiddleware } from './middleware/botWaveMiddleware.js';
 import { sitemapRoutes } from './routes/sitemap.js';
 import { hubRoutes } from './routes/directoryHubs.js';
 import { leafPageRoute } from './routes/leafPage.js';
+import { ogImageRoute } from './routes/ogImage.js';
 
 const app = new Hono();
 
@@ -24,6 +25,9 @@ app.get('/robots.txt', (c) => {
     { 'Content-Type': 'text/plain', 'Cache-Control': 'public, s-maxage=86400' }
   );
 });
+
+// Dynamic 1200x675 OG Image PNG Rasterizer for Google Discover, WhatsApp, LinkedIn, X
+app.route('/', ogImageRoute);
 
 // Sitemap routes
 app.route('/', sitemapRoutes);

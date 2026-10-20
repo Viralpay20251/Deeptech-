@@ -213,7 +213,7 @@ export function generate1200x675OgCard(options: OgImageOptions): string {
       ${safeCategory}
     </text>
     <text x="200" y="25" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" font-weight="700" fill="${accentColor}" letter-spacing="2">
-      &bull; 2026 LIVE REPORT
+      &#8226; 2026 LIVE REPORT
     </text>
   </g>
 
@@ -222,7 +222,7 @@ export function generate1200x675OgCard(options: OgImageOptions): string {
     ${safeTitle.length > 36 ? safeTitle.substring(0, 35) + '...' : safeTitle}
   </text>
   <text x="60" y="285" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="44" font-weight="800" fill="${accentColor}">
-    ${safeCategory} &mdash; In-Depth Analysis
+    ${safeCategory} &#8212; In-Depth Analysis
   </text>
 
   <!-- Subtitle -->
@@ -240,7 +240,7 @@ export function generate1200x675OgCard(options: OgImageOptions): string {
       ${brandName}
     </text>
     <text x="1080" y="40" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" font-weight="600" fill="#64748b" text-anchor="end">
-      Verified 1200x675 Canonical Node &bull; Max-Image-Preview Large
+      Verified 1200x675 Canonical Node &#8226; Max-Image-Preview Large
     </text>
   </g>
 </svg>`;

@@ -132,14 +132,8 @@ export function renderLeafPage(params: LeafPageRenderParams): string {
   const hreflangTags = renderHreflangTags(canonicalUrl, brand);
   const dimEntries = Object.entries(dimensionValues);
 
-  const effectiveOgImage = ogImageUrl || getOgDataUri({
-    title,
-    subtitle: metaDescription,
-    category: domainConfig.dimensions[0] || 'ANALYSIS',
-    brandCluster: brand,
-    metricValue: 'VERIFIED',
-    metricLabel: 'INDEXED',
-  });
+  const slug = canonicalUrl.split('/').filter(Boolean).pop() || 'overview';
+  const effectiveOgImage = ogImageUrl || `https://${domainConfig.hostname}/og/${slug}.png`;
 
   // Formulate rich contextual content based on dimensions
   const dimSummaries = dimEntries.map(([k, v]) => `<strong>${escapeHtml(k)}:</strong> ${escapeHtml(v.display_value)}`).join(' &bull; ');

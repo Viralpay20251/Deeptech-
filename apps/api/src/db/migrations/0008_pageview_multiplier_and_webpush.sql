@@ -58,16 +58,38 @@ CREATE TABLE IF NOT EXISTS public.domain_pageview_velocity (
     discover_impressions BIGINT DEFAULT 0,
     active_push_subscribers BIGINT DEFAULT 0,
     max_image_preview_large BOOLEAN DEFAULT TRUE,
+    active_multiplier_tool TEXT DEFAULT 'Interactive Multiplier Tool',
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Seed the exact 21 Active Canonical Production Domains (Excluding redirects, .vercel.app staging, and barred legacy hosts)
 INSERT INTO public.domain_pageview_velocity 
-(hostname, brand_cluster, daily_sessions, daily_pageviews, avg_session_depth, discover_impressions, active_push_subscribers, max_image_preview_large)
+(hostname, brand_cluster, daily_sessions, daily_pageviews, avg_session_depth, discover_impressions, active_push_subscribers, max_image_preview_large, active_multiplier_tool)
 SELECT 
     hostname, 
     brand_cluster, 
-    0, 0, 1.00, 0, 0, TRUE
+    0, 0, 1.00, 0, 0, TRUE,
+    CASE 
+      WHEN hostname LIKE '%salary%' THEN 'In-Hand CTC & Tax Regime Comparator'
+      WHEN hostname LIKE '%resume%' THEN 'Instant ATS Score & Keyword Gap Scanner'
+      WHEN hostname LIKE '%jobs%' THEN 'Role-Skill-City Match Explorer'
+      WHEN hostname LIKE '%college%' THEN 'Tier 1/2 College Placement Comparator'
+      WHEN hostname LIKE '%career%' THEN 'Career Pathway & Promotion Roadmap Builder'
+      WHEN hostname LIKE '%learn%' THEN 'Interactive Code & Tutorial Sandbox'
+      WHEN hostname LIKE '%employer%' THEN 'Talent Pool Availability Estimator'
+      WHEN hostname LIKE '%government%' THEN 'State & Central Scheme Benefit Checker'
+      WHEN hostname LIKE '%passport%' THEN 'Cryptographic Skill Passport Verifier'
+      WHEN hostname LIKE '%chatr.chat%' THEN 'Live Agent Intent Sandbox & Playground'
+      WHEN hostname LIKE '%chatrchat%' THEN 'Enterprise AI Workforce ROI Calculator'
+      WHEN hostname LIKE '%gifting%' THEN 'Bespoke Saffron Hamper & Packaging Builder'
+      WHEN hostname LIKE '%wedding%' THEN 'Kashmiri Royal Wedding Favor Customizer'
+      WHEN hostname LIKE '%craft%' THEN 'Artisan Papier-Mâché Customizer'
+      WHEN hostname LIKE '%stay%' THEN 'Valley Itinerary & Heritage Orchard Stay Estimator'
+      WHEN hostname LIKE '%travel%' THEN 'Cultural Excursion & Shikara Trail Planner'
+      WHEN hostname LIKE '%nri%' THEN 'Global Diaspora Express Doorstep Courier Flow'
+      WHEN hostname LIKE '%business%' THEN 'Wholesale Bulk Margin & FOB Price Configurator'
+      ELSE 'Ecosystem Canonical Gateway'
+    END
 FROM public.domains_registry
 WHERE inventory_tier = 'active_listed'
   AND host_role IN ('canonical_root', 'subdomain_pseo')
