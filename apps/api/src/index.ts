@@ -76,7 +76,9 @@ app.use('/api/v1', (req, res, next) => {
     req.path === '/crawler/worker/process-next' ||
     req.path === '/pages/sitemap.xml' ||
     req.path === '/pages/robots.txt' ||
-    req.path.startsWith('/pages/p/');
+    req.path.startsWith('/pages/p/') ||
+    req.path.startsWith('/backlinks') ||
+    req.path.startsWith('/domains');
 
   if (isPublic) {
     return next();

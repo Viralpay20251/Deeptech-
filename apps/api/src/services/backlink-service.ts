@@ -214,9 +214,20 @@ export class BacklinkService {
 
       const statusCode = resp.status;
       const html = await resp.text();
-      const containsTarget = html.includes(bl.target_canonical_domain) || html.includes(bl.target_url);
+      const lowerHtml = html.toLowerCase();
+      const containsTarget =
+        lowerHtml.includes(bl.target_canonical_domain.toLowerCase()) ||
+        lowerHtml.includes(bl.target_url.toLowerCase()) ||
+        lowerHtml.includes(bl.anchor_text.toLowerCase());
 
-      const status = containsTarget ? 'verified_active' : 'pending_crawl';
+      let status: 'verified_active' | 'pending_crawl' | 'lost' | 'flagged' = 'pending_crawl';
+      if (statusCode >= 200 && statusCode < 300) {
+        status = containsTarget ? 'verified_active' : 'pending_crawl';
+      } else if (statusCode === 404 || statusCode === 410) {
+        status = 'lost';
+      } else {
+        status = 'flagged';
+      }
 
       const updateRes = await query(
         `
@@ -235,13 +246,13 @@ export class BacklinkService {
       if (!updated) throw new Error('Failed to update backlink record');
       return updated;
     } catch {
-      // In case of timeout or rate limit, record status code 0 and retain active status
+      // If network probe fails (timeout or network barrier), log HTTP 0 and retain pending crawl
       const updateRes = await query(
         `
         UPDATE public.backlinks_registry 
         SET 
-          http_status_code = 200,
-          verification_status = 'verified_active',
+          http_status_code = 0,
+          verification_status = 'pending_crawl',
           last_verified_at = NOW()
         WHERE id = $1
         RETURNING *
