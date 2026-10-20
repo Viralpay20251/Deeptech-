@@ -12,6 +12,7 @@ import {
   Twitter,
   Video,
 } from 'lucide-react';
+import { authFetch } from '../lib/apiClient';
 
 export interface SocialAccountItem {
   id: string;
@@ -173,10 +174,10 @@ export function SocialAccountsHealth() {
 
   const fetchAccounts = async () => {
     try {
-      const res = await fetch('/api/v1/omnipulse/accounts');
+      const res = await authFetch('/api/v1/omnipulse/accounts');
       if (res.ok) {
         const json = await res.json();
-        if (json.success && json.data) {
+        if (json.success && Array.isArray(json.data)) {
           setAccounts(json.data);
         }
       }
@@ -191,11 +192,11 @@ export function SocialAccountsHealth() {
 
   const handleUpdateStatus = async (id: string, newStatus: 'healthy' | 'shadowbanned' | 'restricted') => {
     setAccounts((prev) =>
-      prev.map((acc) => (acc.id === id ? { ...acc, healthStatus: newStatus } : acc))
+      (Array.isArray(prev) ? prev : []).map((acc) => (acc.id === id ? { ...acc, healthStatus: newStatus } : acc))
     );
 
     try {
-      await fetch(`/api/v1/omnipulse/accounts/${id}/status`, {
+      await authFetch(`/api/v1/omnipulse/accounts/${id}/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
@@ -207,12 +208,13 @@ export function SocialAccountsHealth() {
   };
 
   // Stats calculation
-  const totalAccounts = accounts.length;
-  const healthyCount = accounts.filter((a) => a.healthStatus === 'healthy').length;
-  const shadowbannedCount = accounts.filter((a) => a.healthStatus === 'shadowbanned').length;
-  const restrictedCount = accounts.filter((a) => a.healthStatus === 'restricted' || a.healthStatus === 'warning').length;
+  const safeAccounts = Array.isArray(accounts) ? accounts : [];
+  const totalAccounts = safeAccounts.length;
+  const healthyCount = safeAccounts.filter((a) => a.healthStatus === 'healthy').length;
+  const shadowbannedCount = safeAccounts.filter((a) => a.healthStatus === 'shadowbanned').length;
+  const restrictedCount = safeAccounts.filter((a) => a.healthStatus === 'restricted' || a.healthStatus === 'warning').length;
 
-  const filteredAccounts = accounts.filter((a) => {
+  const filteredAccounts = safeAccounts.filter((a) => {
     if (brandFilter !== 'all' && a.brandSlug !== brandFilter) return false;
     if (platformFilter !== 'all' && a.platform !== platformFilter) return false;
     if (statusFilter !== 'all' && a.healthStatus !== statusFilter) return false;
