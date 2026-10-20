@@ -69,7 +69,10 @@ export async function authenticate(
     }
 
     const authHeader = req.headers['authorization'];
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+    const token =
+      authHeader?.startsWith('Bearer ')
+        ? authHeader.slice(7).trim()
+        : (req.query?.['token'] as string | undefined);
 
     if (token) {
       try {

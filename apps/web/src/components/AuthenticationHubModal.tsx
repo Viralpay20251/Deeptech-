@@ -63,8 +63,25 @@ export function AuthenticationHubModal({ isOpen, onClose, onSessionUpdated }: Au
     }
   };
 
-  const handleAuthorizeGoogleOAuth = () => {
-    window.location.href = '/api/v1/auth/google/authorize?redirect=true';
+  const handleAuthorizeGoogleOAuth = async () => {
+    try {
+      setLoading(true);
+      setNotification(null);
+      const res = await authFetch('/api/v1/auth/google/authorize');
+      const json = await res.json();
+      if (json.success && json.url) {
+        window.location.href = json.url;
+      } else {
+        setNotification({
+          type: 'error',
+          message: `❌ Google OAuth Initiation: ${json.error?.message || 'Failed to generate authorization URL.'}`,
+        });
+      }
+    } catch (err) {
+      setNotification({ type: 'error', message: `❌ Error: ${(err as Error).message}` });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSaveServiceAccount = async () => {

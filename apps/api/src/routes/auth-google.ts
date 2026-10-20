@@ -5,14 +5,28 @@
 import { Router, type Request, type Response } from 'express';
 import { GoogleAuthService } from '../services/google-auth-service.js';
 import { query } from '../lib/db.js';
+import { authenticate } from '../middleware/auth.js';
 
 export const authGoogleRouter = Router();
 
 /**
  * Initiate Google OAuth Flow: GET /api/v1/auth/google/authorize
+ * STRICT SECURITY: Requires authenticated operator session.
+ * Zero fallback to default workspace!
  */
-authGoogleRouter.get('/authorize', async (req: Request, res: Response) => {
-  const workspaceId = (req.query['workspace_id'] as string) ?? '00000000-0000-0000-0000-000000000001';
+authGoogleRouter.get('/authorize', authenticate, async (req: Request, res: Response) => {
+  const workspaceId = req.user?.workspace_id;
+
+  if (!workspaceId) {
+    res.status(401).json({
+      success: false,
+      error: {
+        code: 'UNAUTHORIZED_WORKSPACE',
+        message: 'Google OAuth authorization requires an authenticated operator session. Please log in or provide a valid operator token.',
+      },
+    });
+    return;
+  }
 
   try {
     const authUrl = await GoogleAuthService.getAuthorizationUrl(workspaceId);
@@ -62,9 +76,21 @@ authGoogleRouter.get('/callback', async (req: Request, res: Response) => {
 
 /**
  * Google Connection Status: GET /api/v1/auth/google/status
+ * STRICT SECURITY: Requires authenticated operator session.
  */
-authGoogleRouter.get('/status', async (req: Request, res: Response) => {
-  const workspaceId = (req.query['workspace_id'] as string) ?? '00000000-0000-0000-0000-000000000001';
+authGoogleRouter.get('/status', authenticate, async (req: Request, res: Response) => {
+  const workspaceId = req.user?.workspace_id;
+
+  if (!workspaceId) {
+    res.status(401).json({
+      success: false,
+      error: {
+        code: 'UNAUTHORIZED_WORKSPACE',
+        message: 'Google connection status requires an authenticated operator session.',
+      },
+    });
+    return;
+  }
 
   try {
     const resTokens = await query<{
