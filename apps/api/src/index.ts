@@ -29,6 +29,7 @@ import { metaStudioRouter } from './routes/meta-studio.js';
 import { evidenceRouter } from './routes/evidence.js';
 import { domainsRouter } from './routes/domains.js';
 import { queueRouter } from './routes/queue.js';
+import { backlinksRouter } from './routes/backlinks.js';
 import { authenticate, requireWorkspaceScope } from './middleware/auth.js';
 
 const app = express();
@@ -102,6 +103,7 @@ app.use('/api/v1/meta-studio', metaStudioRouter);
 app.use('/api/v1/evidence', evidenceRouter);
 app.use('/api/v1/domains', domainsRouter);
 app.use('/api/v1/queue', queueRouter);
+app.use('/api/v1/backlinks', backlinksRouter);
 
 // 5. Global Error Handler
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

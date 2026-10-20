@@ -5,6 +5,7 @@ import { OmniPulseOverview } from './pages/OmniPulseOverview';
 import { SocialAccountsHealth } from './pages/SocialAccountsHealth';
 import { ContentQueueMonitor } from './pages/ContentQueueMonitor';
 import { PseoIntelligence } from './pages/PseoIntelligence';
+import { BacklinksCommander } from './pages/BacklinksCommander';
 
 interface Brand {
   id: string;
@@ -95,7 +96,8 @@ type TabType =
   | 'omnipulse'
   | 'omnipulse_accounts'
   | 'omnipulse_queue'
-  | 'omnipulse_pseo';
+  | 'omnipulse_pseo'
+  | 'omnipulse_backlinks';
 
 function getTabFromPath(path: string): TabType {
   const clean = path.replace(/\/$/, '') || '/';
@@ -103,6 +105,7 @@ function getTabFromPath(path: string): TabType {
   if (clean === '/omnipulse/accounts') return 'omnipulse_accounts';
   if (clean === '/omnipulse/queue') return 'omnipulse_queue';
   if (clean === '/omnipulse/pseo') return 'omnipulse_pseo';
+  if (clean === '/omnipulse/backlinks') return 'omnipulse_backlinks';
   return 'scorecards';
 }
 
@@ -116,6 +119,8 @@ function getPathFromTab(tab: TabType): string {
       return '/omnipulse/queue';
     case 'omnipulse_pseo':
       return '/omnipulse/pseo';
+    case 'omnipulse_backlinks':
+      return '/omnipulse/backlinks';
     default:
       return '/';
   }
@@ -1039,6 +1044,7 @@ export function App() {
           { key: 'omnipulse_accounts', label: '📱 Social Health', isPulse: true },
           { key: 'omnipulse_queue', label: '🎬 Content Queue', isPulse: true },
           { key: 'omnipulse_pseo', label: '🗺️ pSEO Intelligence', isPulse: true },
+          { key: 'omnipulse_backlinks', label: '🔗 Backlink Engine', isPulse: true },
           { key: 'scorecards', label: 'Scorecards' },
           { key: 'domains', label: '🌐 Domain Registry & Health (26)' },
           { key: 'queue', label: '⚙️ Queue & Workers' },
@@ -1077,6 +1083,7 @@ export function App() {
         {activeTab === 'omnipulse_accounts' && <SocialAccountsHealth />}
         {activeTab === 'omnipulse_queue' && <ContentQueueMonitor />}
         {activeTab === 'omnipulse_pseo' && <PseoIntelligence />}
+        {activeTab === 'omnipulse_backlinks' && <BacklinksCommander />}
 
         {/* TAB 1: Growth Scorecards */}
         {activeTab === 'scorecards' && (
