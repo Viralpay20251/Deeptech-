@@ -155,6 +155,6 @@ function startServer() {
 export { app, startServer };
 export default app;
 
-if (process.argv[1]?.endsWith('index.ts') || process.argv[1]?.endsWith('index.js')) {
+if (!process.env['VERCEL'] && !process.env['AWS_LAMBDA_FUNCTION_NAME'] && (process.argv[1]?.endsWith('index.ts') || process.argv[1]?.endsWith('index.js'))) {
   startServer();
 }

@@ -2,7 +2,11 @@ const { Client } = require('pg');
 const fs = require('fs');
 const path = require('path');
 
-const connectionString = 'postgresql://postgres.mlttxyeeoogffguhiucs:Sanayah%231234@aws-0-ap-south-1.pooler.supabase.com:6543/postgres';
+const connectionString = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL;
+if (!connectionString) {
+  console.error('DATABASE_URL or SUPABASE_DB_URL environment variable is required.');
+  process.exit(1);
+}
 
 async function main() {
   const client = new Client({

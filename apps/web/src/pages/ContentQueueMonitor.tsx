@@ -541,19 +541,19 @@ export function ContentQueueMonitor() {
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', textAlign: 'center' }}>
                   <div style={{ backgroundColor: 'var(--bg-card)', padding: '10px', borderRadius: '6px' }}>
-                    <div style={{ fontSize: '16px', fontWeight: 800 }}>{selectedItem.metrics.views?.toLocaleString()}</div>
+                    <div style={{ fontSize: '16px', fontWeight: 800 }}>{(selectedItem.metrics?.views ?? 0).toLocaleString()}</div>
                     <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Views</div>
                   </div>
                   <div style={{ backgroundColor: 'var(--bg-card)', padding: '10px', borderRadius: '6px' }}>
-                    <div style={{ fontSize: '16px', fontWeight: 800 }}>{selectedItem.metrics.likes?.toLocaleString()}</div>
+                    <div style={{ fontSize: '16px', fontWeight: 800 }}>{(selectedItem.metrics?.likes ?? 0).toLocaleString()}</div>
                     <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Likes</div>
                   </div>
                   <div style={{ backgroundColor: 'var(--bg-card)', padding: '10px', borderRadius: '6px' }}>
-                    <div style={{ fontSize: '16px', fontWeight: 800 }}>{selectedItem.metrics.comments?.toLocaleString()}</div>
+                    <div style={{ fontSize: '16px', fontWeight: 800 }}>{(selectedItem.metrics?.comments ?? 0).toLocaleString()}</div>
                     <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Comments</div>
                   </div>
                   <div style={{ backgroundColor: 'var(--bg-card)', padding: '10px', borderRadius: '6px' }}>
-                    <div style={{ fontSize: '16px', fontWeight: 800 }}>{selectedItem.metrics.shares?.toLocaleString()}</div>
+                    <div style={{ fontSize: '16px', fontWeight: 800 }}>{(selectedItem.metrics?.shares ?? 0).toLocaleString()}</div>
                     <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Shares</div>
                   </div>
                 </div>

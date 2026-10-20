@@ -515,7 +515,7 @@ export function PageviewVelocityMonitor() {
             <TrendingUp size={16} color="var(--accent-blue)" />
           </div>
           <div style={{ fontSize: '28px', fontWeight: 800, marginTop: '8px', color: 'var(--text-primary)' }}>
-            {totals.dailyPVs.toLocaleString()}
+            {(totals.dailyPVs ?? 0).toLocaleString()}
           </div>
           <div style={{ fontSize: '12px', color: '#10b981', marginTop: '4px', fontWeight: 600 }}>
             Target: 1M &ndash; 5M+ Daily &bull; Trajectory: 2.30M/day
@@ -537,7 +537,7 @@ export function PageviewVelocityMonitor() {
             <Layers size={16} color="#8b5cf6" />
           </div>
           <div style={{ fontSize: '28px', fontWeight: 800, marginTop: '8px', color: '#8b5cf6' }}>
-            {totals.avgDepth}x
+            {totals.avgDepth || '1.00'}x
           </div>
           <div style={{ fontSize: '12px', color: '#10b981', marginTop: '4px', fontWeight: 600 }}>
             Target: &gt;5.0 pages/session (Module 1 Active)
@@ -559,10 +559,10 @@ export function PageviewVelocityMonitor() {
             <Globe size={16} color="#f59e0b" />
           </div>
           <div style={{ fontSize: '28px', fontWeight: 800, marginTop: '8px', color: 'var(--text-primary)' }}>
-            {totals.discoverClicks.toLocaleString()}
+            {(totals.discoverClicks ?? 0).toLocaleString()}
           </div>
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            {totals.discoverImpr.toLocaleString()} Discover Impressions (1200x675 OG)
+            {(totals.discoverImpr ?? 0).toLocaleString()} Discover Impressions (1200x675 OG)
           </div>
         </div>
 
@@ -581,7 +581,7 @@ export function PageviewVelocityMonitor() {
             <Bell size={16} color="#10b981" />
           </div>
           <div style={{ fontSize: '28px', fontWeight: 800, marginTop: '8px', color: '#10b981' }}>
-            {totals.pushSubs.toLocaleString()}
+            {(totals.pushSubs ?? 0).toLocaleString()}
           </div>
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
             Zero-Cost VAPID Protocol (No SaaS Fees)
@@ -763,22 +763,22 @@ export function PageviewVelocityMonitor() {
                     </span>
                   </td>
                   <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '12px' }}>
-                    {d.activeMultiplierTool}
+                    {d.activeMultiplierTool || 'Interactive Calculator Flow'}
                   </td>
                   <td style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    {d.dailyPageviews.toLocaleString()}
+                    {(d.dailyPageviews ?? 0).toLocaleString()}
                   </td>
                   <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>
-                    {d.sessionsCount.toLocaleString()}
+                    {(d.sessionsCount ?? 0).toLocaleString()}
                   </td>
                   <td style={{ padding: '12px 16px' }}>
                     <span
                       style={{
                         fontWeight: 700,
-                        color: d.avgSessionDepth >= 5.0 ? '#10b981' : '#f59e0b',
+                        color: (d.avgSessionDepth ?? 1) >= 5.0 ? '#10b981' : '#f59e0b',
                       }}
                     >
-                      {d.avgSessionDepth}x
+                      {d.avgSessionDepth || '1.00'}x
                     </span>
                   </td>
                   <td style={{ padding: '12px 16px' }}>
@@ -787,7 +787,7 @@ export function PageviewVelocityMonitor() {
                     </span>
                   </td>
                   <td style={{ padding: '12px 16px', fontWeight: 600 }}>
-                    {d.pushSubscribersCount.toLocaleString()}
+                    {(d.pushSubscribersCount ?? 0).toLocaleString()}
                   </td>
                 </tr>
               ))}

@@ -117,3 +117,98 @@ BEGIN
     WHERE hostname = p_hostname;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 6. Supabase Realtime Publication (Enables live streaming to dashboard)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND tablename = 'domain_pageview_velocity'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.domain_pageview_velocity;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND tablename = 'discover_pulse_reports'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.discover_pulse_reports;
+  END IF;
+END $$;
+
+-- 7. Row Level Security (RLS) & Client Access Policies
+ALTER TABLE public.domain_pageview_velocity ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.discover_pulse_reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.session_funnel_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.push_subscriptions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow public read on domain_pageview_velocity" ON public.domain_pageview_velocity;
+CREATE POLICY "Allow public read on domain_pageview_velocity"
+ON public.domain_pageview_velocity FOR SELECT
+TO anon, authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Allow public read on discover_pulse_reports" ON public.discover_pulse_reports;
+CREATE POLICY "Allow public read on discover_pulse_reports"
+ON public.discover_pulse_reports FOR SELECT
+TO anon, authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Allow public insert on session_funnel_events" ON public.session_funnel_events;
+CREATE POLICY "Allow public insert on session_funnel_events"
+ON public.session_funnel_events FOR INSERT
+TO anon, authenticated
+WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public insert on push_subscriptions" ON public.push_subscriptions;
+CREATE POLICY "Allow public insert on push_subscriptions"
+ON public.push_subscriptions FOR INSERT
+TO anon, authenticated
+WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Service role full access on velocity" ON public.domain_pageview_velocity;
+CREATE POLICY "Service role full access on velocity"
+ON public.domain_pageview_velocity FOR ALL
+TO service_role
+USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Service role full access on push_subs" ON public.push_subscriptions;
+CREATE POLICY "Service role full access on push_subs"
+ON public.push_subscriptions FOR ALL
+TO service_role
+USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Service role full access on pulse_reports" ON public.discover_pulse_reports;
+CREATE POLICY "Service role full access on pulse_reports"
+ON public.discover_pulse_reports FOR ALL
+TO service_role
+USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Service role full access on funnel_events" ON public.session_funnel_events;
+CREATE POLICY "Service role full access on funnel_events"
+ON public.session_funnel_events FOR ALL
+TO service_role
+USING (true) WITH CHECK (true);
+
+-- 8. High-Throughput Performance Composite Indexes
+CREATE INDEX IF NOT EXISTS idx_push_subs_active ON public.push_subscriptions (brand_cluster, is_active);
+CREATE INDEX IF NOT EXISTS idx_push_subs_hostname ON public.push_subscriptions (hostname, is_active);
+CREATE INDEX IF NOT EXISTS idx_discover_pulse_pub ON public.discover_pulse_reports (hostname, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_funnel_events_lookup ON public.session_funnel_events (hostname, tool_type, step_number);
+CREATE INDEX IF NOT EXISTS idx_funnel_events_session ON public.session_funnel_events (session_id);
+
+-- 9. Daily Velocity Rollover Maintenance RPC
+CREATE OR REPLACE FUNCTION public.reset_daily_domain_velocity()
+RETURNS VOID AS $$
+BEGIN
+    UPDATE public.domain_pageview_velocity
+    SET daily_sessions = 0,
+        daily_pageviews = 0,
+        avg_session_depth = 1.00,
+        updated_at = NOW();
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.reset_daily_domain_velocity() TO authenticated, service_role;
+
+
