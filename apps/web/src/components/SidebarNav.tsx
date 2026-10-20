@@ -33,7 +33,7 @@ export interface SidebarNavProps {
 interface NavItem {
   key: TabType;
   label: string;
-  icon: React.ComponentType<{ size?: number; className?: string; style?: React.CSSProperties }>;
+  icon: React.ComponentType<any>;
   badge?: string | number;
   badgeColor?: string;
   isPulse?: boolean;

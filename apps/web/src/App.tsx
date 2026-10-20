@@ -164,6 +164,7 @@ export function App() {
   // Operator & GSC Authentication State
   const [operatorUser, setOperatorUser] = useState<OperatorUser | null>(() => getStoredUser());
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
 
   // Connectors State
   const [connectors, setConnectors] = useState<ConnectorItem[]>([]);
@@ -968,7 +969,25 @@ export function App() {
           borderBottom: '1px solid var(--border-color)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            title={sidebarCollapsed ? 'Expand navigation sidebar' : 'Collapse navigation sidebar'}
+            style={{
+              background: 'none',
+              border: '1px solid var(--border-color)',
+              color: 'var(--text-secondary)',
+              cursor: 'pointer',
+              padding: '6px',
+              borderRadius: '6px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {sidebarCollapsed ? <PanelLeft size={17} /> : <PanelLeftClose size={17} />}
+          </button>
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '20px' }}>🚀</span>
             <h1 style={{ fontSize: '18px', fontWeight: 700, letterSpacing: '-0.5px' }}>Autonomous Growth OS</h1>
@@ -1072,48 +1091,18 @@ export function App() {
         </div>
       )}
 
-      {/* ─── Navigation Tabs (OmniPulse Engine + Growth OS Modules) ──────── */}
-      <nav style={{ display: 'flex', padding: '0 24px', backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)', gap: '14px', overflowX: 'auto', alignItems: 'center' }}>
-        {[
-          { key: 'omnipulse', label: '⚡ OmniPulse Command', isPulse: true },
-          { key: 'omnipulse_velocity', label: '🚀 Velocity & Multipliers (21)', isPulse: true },
-          { key: 'omnipulse_accounts', label: '📱 Social Health', isPulse: true },
-          { key: 'omnipulse_queue', label: '🎬 Content Queue', isPulse: true },
-          { key: 'omnipulse_pseo', label: '🗺️ pSEO Intelligence', isPulse: true },
-          { key: 'omnipulse_backlinks', label: '🔗 Backlink Engine', isPulse: true },
-          { key: 'scorecards', label: 'Scorecards' },
-          { key: 'domains', label: '🌐 Domain Registry & Health (26)' },
-          { key: 'queue', label: '⚙️ Queue & Workers' },
-          { key: 'approvals', label: `Approvals (${approvals.length})` },
-          { key: 'opportunities', label: 'Opportunities' },
-          { key: 'crawler', label: '🕸️ Web Crawler v2' },
-          { key: 'seo', label: '🔍 SEO Workbench' },
-          { key: 'meta_studio', label: '🏷️ Metadata Studio & Graph' },
-          { key: 'connectors', label: '🔌 Connectors (Wave 1-3)' },
-          { key: 'evidence', label: '📜 Evidence & Claims' },
-        ].map((t) => (
-          <button
-            key={t.key}
-            onClick={() => handleTabSelect(t.key as TabType)}
-            style={{
-              padding: '12px 6px',
-              background: 'none',
-              border: 'none',
-              borderBottom: activeTab === t.key ? '2px solid var(--accent-blue)' : '2px solid transparent',
-              color: activeTab === t.key ? 'var(--text-primary)' : t.isPulse ? '#60a5fa' : 'var(--text-secondary)',
-              fontSize: '13px',
-              fontWeight: activeTab === t.key || t.isPulse ? 600 : 500,
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </nav>
+      {/* ─── Main Workspace Area with Left Sidebar Navigation ──────────── */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        <SidebarNav
+          activeTab={activeTab}
+          onSelectTab={handleTabSelect}
+          approvalsCount={approvals.length}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+        />
 
-      {/* ─── Main Content Area ─────────────────────────────────────────── */}
-      <main style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>
+        {/* ─── Main Content Area ─────────────────────────────────────────── */}
+        <main style={{ flex: 1, padding: '24px', overflowY: 'auto', backgroundColor: 'var(--bg-primary)' }}>
         {/* OmniPulse Autonomous Growth Pages */}
         {activeTab === 'omnipulse' && <OmniPulseOverview />}
         {activeTab === 'omnipulse_velocity' && <PageviewVelocityMonitor />}
@@ -3393,5 +3382,6 @@ export function App() {
         />
       </main>
     </div>
-  );
+  </div>
+);
 }
