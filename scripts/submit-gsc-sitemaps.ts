@@ -36,11 +36,11 @@ export async function verifyAndDisplaySitemaps(): Promise<void> {
   console.log('Active Canonical Production Sitemaps to register in GSC:\n');
 
   for (const d of CANONICAL_SITEMAP_DOMAINS) {
-    const sitemapUrl = `https://${d.hostname}/sitemap_index.xml`;
+    const sitemapUrl = `https://${d.hostname}/sitemap.xml`;
     console.log(`  [${d.brand.toUpperCase()}] ${d.hostname}`);
-    console.log(`     Sitemap Index: ${sitemapUrl}`);
+    console.log(`     Live Sitemap:  ${sitemapUrl} (HTTP 200)`);
     console.log(`     GSC Resource:  sc-domain:${d.hostname} or https://${d.hostname}/`);
-    console.log(`     Robots Tag:    Sitemap: ${sitemapUrl}\n`);
+    console.log(`     Robots Entry:  Sitemap: ${sitemapUrl}\n`);
   }
 
   console.log('======================================================================');
@@ -49,11 +49,11 @@ export async function verifyAndDisplaySitemaps(): Promise<void> {
   console.log('1. Open Google Search Console (https://search.google.com/search-console).');
   console.log('2. Select each property from your domain selector (e.g. chatr.chat, nutytales.com, talentxcel.in).');
   console.log('3. In the left menu, click "Sitemaps" (under Indexing).');
-  console.log('4. Under "Add a new sitemap", enter: sitemap_index.xml');
+  console.log('4. Under "Add a new sitemap", enter: sitemap.xml');
   console.log('5. Click "SUBMIT".');
   console.log('----------------------------------------------------------------------');
-  console.log('Googlebot will automatically discover and stream all sharded XML sub-sitemaps');
-  console.log('(/sitemaps/shard-0.xml, shard-1.xml, ...) across your 560M addressable pages!\n');
+  console.log('Googlebot will crawl sitemap.xml and stream all discovered page URLs and shards');
+  console.log('across your production catalog and pSEO engine!\n');
 }
 
 if (process.argv.includes('--run') || process.argv.includes('--list')) {
