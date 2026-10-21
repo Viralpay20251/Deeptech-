@@ -23,6 +23,9 @@
     "safety:check": "node scripts/safety-check.js",
     "test:ollama": "tsx scripts/test-ollama.ts",
     "ollama:serve": "node scripts/ollama-service.ts",
+    "autodm:listen": "tsx scripts/run-autodm-listener.ts --daemon",
+    "orchestrator:run": "tsx scripts/autonomous-orchestrator.ts --now",
+    "sitemaps:verify": "tsx scripts/submit-gsc-sitemaps.ts --list",
     "worker:crawler": "npm run worker:crawler --workspace=apps/api"
   },
   "engines": {
