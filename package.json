@@ -22,6 +22,7 @@
     "db:seed:dev": "npm run db:seed:dev --workspace=apps/api",
     "safety:check": "node scripts/safety-check.js",
     "test:ollama": "tsx scripts/test-ollama.ts",
+    "ollama:serve": "node scripts/ollama-service.ts",
     "worker:crawler": "npm run worker:crawler --workspace=apps/api"
   },
   "engines": {

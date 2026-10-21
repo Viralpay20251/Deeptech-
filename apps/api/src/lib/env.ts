@@ -30,7 +30,7 @@ const envSchema = z.object({
   OPENAI_API_KEY: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
   GOOGLE_AI_API_KEY: z.string().optional(),
-  OLLAMA_BASE_URL: z.string().default('http://localhost:11434'),
+  OLLAMA_BASE_URL: z.string().default('http://127.0.0.1:11434'),
   OLLAMA_MODEL: z.string().default('llama3.2:latest'),
   OLLAMA_TIMEOUT_MS: z.coerce.number().default(3000),
 
