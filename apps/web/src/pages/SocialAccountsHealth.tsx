@@ -30,141 +30,8 @@ export interface SocialAccountItem {
 }
 
 export function SocialAccountsHealth() {
-  const [accounts, setAccounts] = useState<SocialAccountItem[]>([
-    {
-      id: 'acc-1',
-      brand: 'TalentXcel',
-      brandSlug: 'talentxcel',
-      platform: 'linkedin',
-      handle: 'talentxcel-official',
-      profileUrl: 'https://linkedin.com/company/talentxcel-official',
-      healthStatus: 'healthy',
-      lastPostedAt: '45m ago',
-      dailyPostsUsed: 3,
-      dailyPostLimit: 5,
-      cookieStatus: 'valid',
-    },
-    {
-      id: 'acc-2',
-      brand: 'TalentXcel',
-      brandSlug: 'talentxcel',
-      platform: 'youtube',
-      handle: '@TalentXcelJobs',
-      profileUrl: 'https://youtube.com/@TalentXcelJobs',
-      healthStatus: 'healthy',
-      lastPostedAt: '2h ago',
-      dailyPostsUsed: 2,
-      dailyPostLimit: 4,
-      cookieStatus: 'valid',
-    },
-    {
-      id: 'acc-3',
-      brand: 'TalentXcel',
-      brandSlug: 'talentxcel',
-      platform: 'twitter',
-      handle: '@TalentXcel',
-      profileUrl: 'https://x.com/TalentXcel',
-      healthStatus: 'warning',
-      lastPostedAt: '5h ago',
-      dailyPostsUsed: 4,
-      dailyPostLimit: 6,
-      cookieStatus: 'valid',
-      notes: 'Rate limit proximity reached on read-side',
-    },
-    {
-      id: 'acc-4',
-      brand: 'CHATR',
-      brandSlug: 'chatr',
-      platform: 'youtube',
-      handle: '@CHATRapp',
-      profileUrl: 'https://youtube.com/@CHATRapp',
-      healthStatus: 'healthy',
-      lastPostedAt: '1h ago',
-      dailyPostsUsed: 4,
-      dailyPostLimit: 5,
-      cookieStatus: 'valid',
-    },
-    {
-      id: 'acc-5',
-      brand: 'CHATR',
-      brandSlug: 'chatr',
-      platform: 'facebook',
-      handle: 'ChatrOfficial',
-      profileUrl: 'https://facebook.com/ChatrOfficial',
-      healthStatus: 'healthy',
-      lastPostedAt: '3h ago',
-      dailyPostsUsed: 3,
-      dailyPostLimit: 5,
-      cookieStatus: 'valid',
-    },
-    {
-      id: 'acc-6',
-      brand: 'CHATR',
-      brandSlug: 'chatr',
-      platform: 'instagram',
-      handle: '@chatr_global',
-      profileUrl: 'https://instagram.com/chatr_global',
-      healthStatus: 'shadowbanned',
-      lastPostedAt: '18h ago',
-      dailyPostsUsed: 1,
-      dailyPostLimit: 3,
-      cookieStatus: 'valid',
-      notes: 'Hashtag reach suppressed by algorithm. Pausing automated hashtags for 48h.',
-    },
-    {
-      id: 'acc-7',
-      brand: 'Nuty Tales',
-      brandSlug: 'nuty-tales',
-      platform: 'instagram',
-      handle: '@nutytales',
-      profileUrl: 'https://instagram.com/nutytales',
-      healthStatus: 'healthy',
-      lastPostedAt: '2h ago',
-      dailyPostsUsed: 2,
-      dailyPostLimit: 4,
-      cookieStatus: 'valid',
-    },
-    {
-      id: 'acc-8',
-      brand: 'Nuty Tales',
-      brandSlug: 'nuty-tales',
-      platform: 'youtube',
-      handle: '@NutyTalesBites',
-      profileUrl: 'https://youtube.com/@NutyTalesBites',
-      healthStatus: 'healthy',
-      lastPostedAt: '6h ago',
-      dailyPostsUsed: 1,
-      dailyPostLimit: 3,
-      cookieStatus: 'valid',
-    },
-    {
-      id: 'acc-9',
-      brand: 'TalentXcel',
-      brandSlug: 'talentxcel',
-      platform: 'facebook',
-      handle: 'TalentXcelJobs',
-      profileUrl: 'https://facebook.com/TalentXcelJobs',
-      healthStatus: 'healthy',
-      lastPostedAt: '1h ago',
-      dailyPostsUsed: 3,
-      dailyPostLimit: 4,
-      cookieStatus: 'valid',
-    },
-    {
-      id: 'acc-10',
-      brand: 'TX Academy',
-      brandSlug: 'tx-academy',
-      platform: 'youtube',
-      handle: '@TXAcademyEngineering',
-      profileUrl: 'https://youtube.com/@TXAcademyEngineering',
-      healthStatus: 'restricted',
-      lastPostedAt: '1d ago',
-      dailyPostsUsed: 0,
-      dailyPostLimit: 3,
-      cookieStatus: 'expiring_soon',
-      notes: 'Session refresh needed via Patchright cookie collector.',
-    },
-  ]);
+  const [accounts, setAccounts] = useState<SocialAccountItem[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
 
   const [brandFilter, setBrandFilter] = useState<string>('all');
   const [platformFilter, setPlatformFilter] = useState<string>('all');
@@ -183,6 +50,8 @@ export function SocialAccountsHealth() {
       }
     } catch {
       // Keep state
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -527,14 +396,21 @@ export function SocialAccountsHealth() {
             </tr>
           </thead>
           <tbody>
-            {filteredAccounts.map((account) => (
-              <tr
-                key={account.id}
-                style={{
-                  borderBottom: '1px solid var(--border-color)',
-                  backgroundColor: 'transparent',
-                }}
-              >
+            {filteredAccounts.length === 0 ? (
+              <tr>
+                <td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  {loading ? 'Connecting to live database and fetching 39 social accounts...' : 'No accounts match your filter criteria.'}
+                </td>
+              </tr>
+            ) : (
+              filteredAccounts.map((account) => (
+                <tr
+                  key={account.id}
+                  style={{
+                    borderBottom: '1px solid var(--border-color)',
+                    backgroundColor: 'transparent',
+                  }}
+                >
                 <td style={{ padding: '12px 16px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     {renderPlatformIcon(account.platform)}
@@ -625,7 +501,7 @@ export function SocialAccountsHealth() {
                   </div>
                 </td>
               </tr>
-            ))}
+            )))}
           </tbody>
         </table>
       </div>

@@ -36,97 +36,8 @@ export interface ContentQueueItem {
 }
 
 export function ContentQueueMonitor() {
-  const [items, setItems] = useState<ContentQueueItem[]>([
-    {
-      id: 'cq-1',
-      brand: 'CHATR',
-      brandSlug: 'chatr',
-      platform: 'youtube',
-      hookLine: 'Why asynchronous video messaging cuts 8 hours of Zoom fatigue weekly.',
-      caption: 'Stop sitting through 45-minute meetings that could have been a 30-second interactive clip. #Productivity #VideoMessaging #WorkSmarter',
-      script: 'Scene 1: Close up of endless calendar invites.\nScene 2: Split screen showing CHATR interactive thread.\nScene 3: "Reclaim your calendar without losing human warmth."',
-      firstComment: 'Try CHATR completely free at https://chatr.chat/video-messaging — no credit card needed.',
-      scheduledTime: 'Today at 16:30',
-      stage: 'pending',
-      audioVoice: 'en-US-GuyNeural',
-      videoDurationSec: 32,
-    },
-    {
-      id: 'cq-2',
-      brand: 'TalentXcel',
-      brandSlug: 'talentxcel',
-      platform: 'linkedin',
-      hookLine: 'The 2026 AI Infrastructure Compensation Matrix is here.',
-      caption: 'We analyzed 1,400+ verified engineering offers across US, EU, and India. Key takeaway: agent orchestration engineers are out-earning traditional frontend leads by 38%.',
-      script: 'Card carousel breakdown of median compensation bands across tiers and remote hubs.',
-      firstComment: 'Download the complete verified benchmark sheet: https://talentxcel.in/insights/ai-salaries-2026',
-      scheduledTime: 'Today at 17:00',
-      stage: 'media_ready',
-      thumbnailUrl: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=400&auto=format&fit=crop&q=80',
-      videoDurationSec: 45,
-    },
-    {
-      id: 'cq-3',
-      brand: 'Nuty Tales',
-      brandSlug: 'nuty-tales',
-      platform: 'instagram',
-      hookLine: 'Did you know standard roasted almonds lose 40% of their bio-active vitamin E?',
-      caption: 'We slow-activate our nuts at 42°C for 24 hours to preserve nutrient bioavailability. Taste the raw difference.',
-      script: 'ASMR cracking of activated California almonds with macro nutrient callouts.',
-      firstComment: 'Fresh batches baked daily. Shop now at https://nutytales.com with code CRUNCH15 for 15% off.',
-      scheduledTime: 'Today at 18:15',
-      stage: 'scheduled',
-      thumbnailUrl: 'https://images.unsplash.com/photo-1508061253366-f7da158b6d46?w=400&auto=format&fit=crop&q=80',
-      videoDurationSec: 28,
-    },
-    {
-      id: 'cq-4',
-      brand: 'CHATR',
-      brandSlug: 'chatr',
-      platform: 'facebook',
-      hookLine: 'POV: Your boss still sends you 300-word emails when a quick 10-second video answers everything.',
-      caption: 'Save your team from reading marathons. Send interactive video reactions in one click. #WFH #RemoteWork #SlackAlternative',
-      script: 'Humorous reaction face cutting into ultra-fast video creation workflow.',
-      firstComment: 'Download the app free at https://chatr.chat',
-      scheduledTime: 'Posted 2h ago',
-      stage: 'posted',
-      thumbnailUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&auto=format&fit=crop&q=80',
-      videoDurationSec: 24,
-      metrics: {
-        views: 28900,
-        likes: 2450,
-        comments: 184,
-        shares: 612,
-      },
-    },
-    {
-      id: 'cq-5',
-      brand: 'TX Academy',
-      brandSlug: 'tx-academy',
-      platform: 'youtube',
-      hookLine: 'Build a production multi-agent system using Ollama and TypeScript.',
-      caption: 'Step-by-step tutorial on local agent execution, zero API token costs, and structured JSON output streaming.',
-      script: 'High energy code walkthrough in VS Code showing local llama3.2 inference.',
-      firstComment: 'Repository code and setup scripts: https://txacademy.ai/courses/agentic-engineering',
-      scheduledTime: 'Failed 1h ago',
-      stage: 'failed',
-      failureReason: 'Patchright session token expired during upload handshake. Refresh required.',
-      videoDurationSec: 58,
-    },
-    {
-      id: 'cq-6',
-      brand: 'TalentXcel',
-      brandSlug: 'talentxcel',
-      platform: 'twitter',
-      hookLine: '5 interview questions that immediately reveal if an AI engineer understands distributed inference.',
-      caption: 'Thread: 1/ Don\'t ask generic LeetCode algorithms. Ask these 5 system design problems instead 🧵👇',
-      script: 'Twitter thread generation with 5 technical prompts.',
-      firstComment: 'Follow @TalentXcel for daily engineering leadership breakdowns.',
-      scheduledTime: 'Today at 19:45',
-      stage: 'media_ready',
-      videoDurationSec: 0,
-    },
-  ]);
+  const [items, setItems] = useState<ContentQueueItem[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
 
   const [brandFilter, setBrandFilter] = useState<string>('all');
   const [platformFilter, setPlatformFilter] = useState<string>('all');
@@ -143,6 +54,8 @@ export function ContentQueueMonitor() {
       }
     } catch {
       // Keep state
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -296,7 +209,12 @@ export function ContentQueueMonitor() {
 
               {/* Cards in Column */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {colItems.map((item) => (
+                {colItems.length === 0 ? (
+                  <div style={{ padding: '16px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    {loading ? 'Fetching pipeline...' : 'No items in this stage'}
+                  </div>
+                ) : (
+                  colItems.map((item) => (
                   <div
                     key={item.id}
                     onClick={() => setSelectedItem(item)}
@@ -406,7 +324,7 @@ export function ContentQueueMonitor() {
                       )}
                     </div>
                   </div>
-                ))}
+                )))}
               </div>
             </div>
           );

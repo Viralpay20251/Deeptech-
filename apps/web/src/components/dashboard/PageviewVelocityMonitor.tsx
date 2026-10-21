@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Zap,
   TrendingUp,
@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   RefreshCw,
 } from 'lucide-react';
+import { authFetch } from '../../lib/apiClient';
 
 export interface DomainVelocityRecord {
   hostname: string;
@@ -354,6 +355,30 @@ export function PageviewVelocityMonitor() {
   const [selectedCluster, setSelectedCluster] = useState<'all' | 'talentxcel' | 'chatr' | 'nutytales'>('all');
   const [isSimulatingTraffic, setIsSimulatingTraffic] = useState<boolean>(false);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [loading, setLoading] = useState<boolean>(false);
+
+  const fetchVelocityData = async () => {
+    try {
+      const res = await authFetch('/api/v1/omnipulse/velocity');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          setDomains(json.data);
+          setLastUpdated(new Date());
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to fetch real-time domain velocity:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchVelocityData();
+    const interval = setInterval(fetchVelocityData, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Aggregate System Totals
   const totals = React.useMemo(() => {
@@ -446,6 +471,29 @@ export function PageviewVelocityMonitor() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button
+            onClick={() => {
+              setLoading(true);
+              fetchVelocityData();
+            }}
+            disabled={loading}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              backgroundColor: 'var(--bg-card)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '6px',
+              padding: '8px 16px',
+              fontWeight: 600,
+              fontSize: '13px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <RefreshCw size={14} className={loading ? 'spin' : ''} />
+            {loading ? 'Refreshing...' : 'Refresh Live Data'}
+          </button>
           <button
             onClick={triggerLiveTrafficBurst}
             disabled={isSimulatingTraffic}
