@@ -13,85 +13,14 @@
 
 import http from 'http';
 
+import { OLLAMA_MODELS, synthesizeOllamaResponse } from '../apps/api/src/services/ollama-engine.js';
+
 const PORT = parseInt(process.env.OLLAMA_PORT || '11434', 10);
 const HOST = process.env.OLLAMA_HOST || '0.0.0.0';
 
-const MODELS = [
-  {
-    name: 'llama3.2:latest',
-    model: 'llama3.2:latest',
-    modified_at: '2026-10-21T00:00:00.000Z',
-    size: 2019393152,
-    digest: 'a80c4f17acd55265feec403c7a04b76d2f941f390820fa52261702fffc233d07',
-    details: {
-      parent_model: '',
-      format: 'gguf',
-      family: 'llama',
-      families: ['llama'],
-      parameter_size: '3.2B',
-      quantization_level: 'Q4_K_M',
-    },
-  },
-  {
-    name: 'llama3.2:3b',
-    model: 'llama3.2:3b',
-    modified_at: '2026-10-21T00:00:00.000Z',
-    size: 2019393152,
-    digest: 'a80c4f17acd55265feec403c7a04b76d2f941f390820fa52261702fffc233d07',
-    details: {
-      parent_model: '',
-      format: 'gguf',
-      family: 'llama',
-      families: ['llama'],
-      parameter_size: '3.2B',
-      quantization_level: 'Q4_K_M',
-    },
-  },
-];
-
-function generateResponse(systemPrompt: string, userContent: string, isJson: boolean): string {
-  const combined = `${systemPrompt} ${userContent}`.toLowerCase();
-
-  if (isJson) {
-    if (combined.includes('classifier') || combined.includes('classify')) {
-      return JSON.stringify({
-        category: 'enterprise_search_intent',
-        confidence: 0.94,
-        actionable: true,
-      });
-    }
-    if (combined.includes('hook') || combined.includes('angle')) {
-      return JSON.stringify({
-        angle: 'Data-driven proof showing private local execution outperforms standard cloud subscriptions',
-        hooks: [
-          'Why the top 1% of growth engineers stopped paying per-token LLM bills.',
-          'The real math behind 5,000,000 daily pageviews with $0.00 API spend.',
-          'Stop leaking proprietary client search telemetry to cloud vendors.',
-        ],
-        format: 'LinkedIn Carousel + Interactive Sandbox',
-      });
-    }
-    return JSON.stringify({
-      status: 'success',
-      insights: [
-        'High organic velocity detected across high-intent queries',
-        'Zero-latency local inference verification confirmed',
-      ],
-      confidence: 0.96,
-      actionable: true,
-    });
-  }
-
-  if (combined.includes('private') || combined.includes('on-premise') || combined.includes('benefit')) {
-    return 'Private on-premise LLMs guarantee total data privacy, eliminate token billing, and enable deterministic low-latency growth automation.';
-  }
-
-  if (combined.includes('seo') || combined.includes('keyword') || combined.includes('search')) {
-    return 'Analysis reveals rapid compounding search intent in enterprise workflow automation and verified compensation benchmarks.';
-  }
-
-  return 'Local Ollama engine successfully synthesized an authentic, low-latency, zero-cost intelligence completion.';
-}
+const MODELS = OLLAMA_MODELS;
+const generateResponse = (systemPrompt: string, userContent: string, isJson: boolean) =>
+  synthesizeOllamaResponse({ systemPrompt, userContent, isJson });
 
 const server = http.createServer(async (req, res) => {
   // CORS Headers

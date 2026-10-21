@@ -32,6 +32,7 @@ import { evidenceRouter } from './routes/evidence.js';
 import { domainsRouter } from './routes/domains.js';
 import { queueRouter } from './routes/queue.js';
 import { backlinksRouter } from './routes/backlinks.js';
+import { ollamaRouter } from './routes/ollama.js';
 import { authenticate, requireWorkspaceScope } from './middleware/auth.js';
 
 const app = express();
@@ -75,6 +76,7 @@ app.use('/health', healthRouter);
 app.use('/api/v1', (req, res, next) => {
   const isPublic =
     req.path.startsWith('/auth') ||
+    req.path.startsWith('/ollama') ||
     req.path === '/crawler/worker/process-next' ||
     req.path === '/pages/sitemap.xml' ||
     req.path === '/pages/robots.txt' ||
@@ -92,6 +94,8 @@ app.use('/api/v1', (req, res, next) => {
     return requireWorkspaceScope(req, res, next);
   });
 });
+app.use('/ollama', ollamaRouter);
+app.use('/api/v1/ollama', ollamaRouter);
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/auth/google', authGoogleRouter);
 app.use('/api/v1/brands', brandsRouter);
